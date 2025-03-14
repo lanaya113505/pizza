@@ -1,24 +1,17 @@
-<button id="login-btn">Login with Google</button>
+<button onclick="popupGoogle()">Masuk Google (Sesi Lo)</button>
 
 <script>
-document.getElementById('login-btn').addEventListener('click', () => {
-    const client_id = '644409995490-u6affpeji678jd9i4cn317utga0pmj30.apps.googleusercontent.com';
-    const redirect_uri = 'http://127.0.0.1:8900/index.htm';
-    const scope = 'https://www.googleapis.com/auth/adwords email';
-    const response_type = 'code';
-    const code_challenge_method = 'S256';
-    const code_challenge = 'HOaurB7USSjemAN1k7y6TXbxKU7tYxE2Thg1BS8z4c0';
-    const flowName = 'GeneralOAuthFlow';
-    
-    const oauthURL = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${client_id}` +
-        `&redirect_uri=${encodeURIComponent(redirect_uri)}` +
-        `&response_type=${response_type}` +
-        `&scope=${encodeURIComponent(scope)}` +
-        `&code_challenge_method=${code_challenge_method}` +
-        `&code_challenge=${code_challenge}` +
-        `&flowName=${flowName}`;
+function popupGoogle() {
+  const url = `https://accounts.google.com/v3/signin/identifier?` +
+    `client_id=644409995490-u6affpeji678jd9i4cn317utga0pmj30.apps.googleusercontent.com` +
+    `&response_type=code` +
+    `&redirect_uri=${encodeURIComponent('http://127.0.0.1:8900/index.htm')}` +
+    `&code_challenge_method=S256` +
+    `&code_challenge=HOaurB7USSjemAN1k7y6TXbxKU7tYxE2Thg1BS8z4c0` +
+    `&scope=${encodeURIComponent('https://www.googleapis.com/auth/adwords email')}` +
+    `&hl=en` +
+    `&flowName=GeneralOAuthFlow`;
 
-    window.open(oauthURL, 'Google Login', 'width=500,height=600');
-});
+  window.open(url, '_blank', 'width=600,height=700');
+}
 </script>
