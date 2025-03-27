@@ -1,21 +1,17 @@
-<button onclick="getFinalUrl()">Buka & Ambil URL</button>
+<iframe id="myFrame" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu"></iframe>
+<button onclick="getFinalURL()">Get Final URL</button>
 
 <script>
-function getFinalUrl() {
-    // URL awal dari Google
-    let imageUrl = "https://adservice.google.com/ddm/clk/408533097;208818505;l;;%3F//lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu";
-
-    // Membuka gambar di tab baru
-    let newTab = window.open(imageUrl, "_blank");
-
-    // Tunggu beberapa detik lalu coba ambil URL final
+  function getFinalURL() {
+    const iframe = document.getElementById("myFrame");
+    
     setTimeout(() => {
-        try {
-            let finalUrl = newTab.location.href; // Ambil URL dari tab baru
-            console.log("Final URL:", finalUrl);
-        } catch (error) {
-            console.error("Tidak bisa mengambil URL karena CORS.");
-        }
-    }, 3000); // Tunggu 3 detik sebelum mencoba ambil URL
-}
+      try {
+        const finalURL = iframe.contentWindow.location.href;
+        alert("Final URL: " + finalURL);
+      } catch (e) {
+        console.error("Tidak bisa mengakses final URL karena pembatasan keamanan.");
+      }
+    }, 3000); // Tunggu beberapa detik sampai iframe load
+  }
 </script>
