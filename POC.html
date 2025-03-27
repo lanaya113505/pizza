@@ -1,13 +1,15 @@
-<img id="myImage" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu" />
-
-<p>Token: <span id="tokenDisplay">Loading...</span></p>
+<iframe id="myFrame" 
+  src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu" 
+  sandbox="allow-scripts">
+</iframe>
 
 <script>
-  window.onload = function () {
-    let img = document.getElementById("myImage");
-    let url = new URL(img.src);
-
-    let token = url.pathname.split('/').pop(); // Ambil token dari URL
-    document.getElementById("tokenDisplay").textContent = token; // Tampilkan di halaman
+  document.getElementById("myFrame").onload = function () {
+    try {
+      let iframeDoc = document.getElementById("myFrame").contentWindow.document;
+      console.log(iframeDoc);  // Ini akan error karena CORS
+    } catch (error) {
+      console.warn("Tidak bisa akses iframe karena CORS!", error);
+    }
   };
 </script>
