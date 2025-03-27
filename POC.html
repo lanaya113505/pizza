@@ -1,17 +1,26 @@
-<iframe id="myFrame" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu"></iframe>
-<button onclick="getFinalURL()">Get Final URL</button>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ambil Final URL</title>
+</head>
+<body>
+    <button onclick="getFinalURL()">Get Final URL</button>
+    <p id="result"></p>
 
-<script>
-  function getFinalURL() {
-    const iframe = document.getElementById("myFrame");
-    
-    setTimeout(() => {
-      try {
-        const finalURL = iframe.contentWindow.location.href;
-        alert("Final URL: " + finalURL);
-      } catch (e) {
-        console.error("Tidak bisa mengakses final URL karena pembatasan keamanan.");
-      }
-    }, 3000); // Tunggu beberapa detik sampai iframe load
-  }
-</script>
+    <script>
+        function getFinalURL() {
+            var win = window.open("https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu");
+
+            setTimeout(() => {
+                try {
+                    const finalURL = win.location.href;
+                    win.location = "about:blank"; // Mengosongkan halaman
+                    document.getElementById("result").innerText = "Final URL: " + finalURL;
+                } catch (e) {
+                    document.getElementById("result").innerText = "Tidak bisa mengambil URL karena pembatasan keamanan.";
+                }
+            }, 3000); // Tunggu 3 detik sampai halaman redirect selesai
+        }
+    </script>
+</body>
+</html>
