@@ -1,15 +1,18 @@
 <iframe id="myFrame" 
-  src="https://adservice.google.com/ddm/clk/408533097;208818505;l;;%3F//lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu" 
-  sandbox="allow-scripts">
+  src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu">
 </iframe>
 
+<canvas id="canvas"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.0/tesseract.min.js"></script>
 <script>
-  document.getElementById("myFrame").onload = function () {
-    try {
-      let iframeDoc = document.getElementById("myFrame").contentWindow.document;
-      console.log(iframeDoc);  // Ini akan error karena CORS
-    } catch (error) {
-      console.warn("Tidak bisa akses iframe karena CORS!", error);
-    }
-  };
+  setTimeout(() => {
+    html2canvas(document.getElementById("myFrame")).then(canvas => {
+      document.body.appendChild(canvas); // Hasil screenshot
+
+      Tesseract.recognize(canvas, "eng").then(({ data: { text } }) => {
+        console.log("Hasil OCR:", text);
+      });
+    });
+  }, 3000);
 </script>
