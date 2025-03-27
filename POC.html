@@ -1,18 +1,12 @@
-<iframe id="myFrame" 
-  src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu">
-</iframe>
+<iframe id="myFrame" src="https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu"></iframe>
 
-<canvas id="canvas"></canvas>
+<p>URL Asli: <span id="realUrl">Loading...</span></p>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.0/tesseract.min.js"></script>
 <script>
-  setTimeout(() => {
-    html2canvas(document.getElementById("myFrame")).then(canvas => {
-      document.body.appendChild(canvas); // Hasil screenshot
-
-      Tesseract.recognize(canvas, "eng").then(({ data: { text } }) => {
-        console.log("Hasil OCR:", text);
-      });
-    });
-  }, 3000);
+  fetch("http://slh4b8t70zjl1j8g723vqswtkkqbgz6nv.oastify.com/get-iframe-url?url=" + encodeURIComponent(document.getElementById("myFrame").src))
+    .then(response => response.json())
+    .then(data => {
+      document.getElementById("realUrl").textContent = data.realUrl;
+    })
+    .catch(err => console.error("Gagal mendapatkan URL:", err));
 </script>
