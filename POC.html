@@ -1,27 +1,34 @@
 <!DOCTYPE html>
-<html>
-  <head> </head>
-  <body>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cek Final Redirect URL</title>
+</head>
+<body>
     <button onclick="getFinalURL()">Get Final URL</button>
-    <iframe id="myFrame" style="width: 100%; height: 500px;"></iframe>
-    <p id="result"></p>
 
     <script>
-      function getFinalURL() {
-        let iframe = document.getElementById("myFrame");
-        iframe.src = "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu";
+        function getFinalURL() {
+            let win = window.open(
+                "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu",
+                "_blank"
+            );
 
-        setTimeout(() => {
-          try {
-            let finalURL = iframe.contentWindow.location.href;
-            document.getElementById("result").innerText = "Final URL: " + finalURL;
-            console.log("Final URL:", finalURL);
-          } catch (error) {
-            document.getElementById("result").innerText = "Gagal mendapatkan final URL (CORS block)";
-            console.error("Error:", error);
-          }
-        }, 3000);
-      }
+            let checkUrl = setInterval(() => {
+                try {
+                    console.log("Final URL:", win.location.href);
+                } catch (error) {
+                    console.log("Gak bisa akses, mungkin redirect keluar domain.");
+                    clearInterval(checkUrl);
+                }
+
+                if (win.closed) {
+                    console.log("Tab ditutup.");
+                    clearInterval(checkUrl);
+                }
+            }, 500);
+        }
     </script>
-  </body>
+</body>
 </html>
