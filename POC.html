@@ -2,21 +2,21 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Cek Redirect URL</title>
+    <title>Intercept Redirect via Service Worker</title>
 </head>
 <body>
-    <button onclick="fetchFinalURL()">Get Final URL</button>
+    <button onclick="openURL()">Open URL</button>
+
     <script>
-        async function fetchFinalURL() {
-            let url = "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu";
+        // Daftarkan Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => {
+                console.log("Service Worker Registered!");
+            });
+        }
 
-            try {
-                let response = await fetch(url, { method: "HEAD", redirect: "manual" });
-
-                console.log("Redirect Location:", response.headers.get("Location"));
-            } catch (error) {
-                console.log("Error:", error);
-            }
+        function openURL() {
+            window.open('/proxy?url=' + encodeURIComponent("https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu"), "_blank");
         }
     </script>
 </body>
