@@ -2,32 +2,21 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cek Final Redirect URL</title>
+    <title>Cek Redirect URL</title>
 </head>
 <body>
-    <button onclick="getFinalURL()">Get Final URL</button>
-
+    <button onclick="fetchFinalURL()">Get Final URL</button>
     <script>
-        function getFinalURL() {
-            let win = window.open(
-                "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu",
-                "_blank"
-            );
+        async function fetchFinalURL() {
+            let url = "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu";
 
-            let checkUrl = setInterval(() => {
-                try {
-                    console.log("Final URL:", win.location.href);
-                } catch (error) {
-                    console.log("Gak bisa akses, mungkin redirect keluar domain.");
-                    clearInterval(checkUrl);
-                }
+            try {
+                let response = await fetch(url, { method: "HEAD", redirect: "manual" });
 
-                if (win.closed) {
-                    console.log("Tab ditutup.");
-                    clearInterval(checkUrl);
-                }
-            }, 500);
+                console.log("Redirect Location:", response.headers.get("Location"));
+            } catch (error) {
+                console.log("Error:", error);
+            }
         }
     </script>
 </body>
