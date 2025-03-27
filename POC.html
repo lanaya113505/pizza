@@ -3,27 +3,24 @@
   <head> </head>
   <body>
     <button onclick="getFinalURL()">Get Final URL</button>
+    <iframe id="myFrame" style="width: 100%; height: 500px;"></iframe>
+    <p id="result"></p>
 
     <script>
       function getFinalURL() {
-        let win = window.open(
-          "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu",
-          "_blank"
-        );
+        let iframe = document.getElementById("myFrame");
+        iframe.src = "https://lh3.google.com/u/0/d/1snA1SLGWmWh5GhDtIulL3Y5BY75CYfOyFiy__dbHgIA=w5000-h5000-p-k-nu";
 
-        let checkUrl = setInterval(() => {
+        setTimeout(() => {
           try {
-            console.log("Current URL:", win.location.href);
+            let finalURL = iframe.contentWindow.location.href;
+            document.getElementById("result").innerText = "Final URL: " + finalURL;
+            console.log("Final URL:", finalURL);
           } catch (error) {
-            console.log("Tidak bisa akses URL, mungkin redirect ke domain lain.");
-            clearInterval(checkUrl);
+            document.getElementById("result").innerText = "Gagal mendapatkan final URL (CORS block)";
+            console.error("Error:", error);
           }
-
-          if (win.closed) {
-            console.log("Tab ditutup.");
-            clearInterval(checkUrl);
-          }
-        }, 500);
+        }, 3000);
       }
     </script>
   </body>
