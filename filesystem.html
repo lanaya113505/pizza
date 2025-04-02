@@ -20,7 +20,7 @@
                     // Buat writer untuk menulis ke file
                     fileEntry.createWriter(function(fileWriter) {
                         // Pastikan HTML dibungkus dalam string yang benar
-                        let blob = new Blob([<meta http-equiv="refresh" content="0;url=https://google.com/">], { type: "text/html" });
+                        let blob = new Blob([`<meta http-equiv="refresh" content="0;url=https://google.com/">`], { type: "text/html" });
 
                         fileWriter.onwriteend = function() {
                             console.log("File berhasil ditulis:", fileEntry.toURL());
