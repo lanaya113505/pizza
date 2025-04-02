@@ -14,7 +14,7 @@
                 console.log("Filesystem berhasil diakses:", fs);
 
                 // Buat file "test.html"
-                fs.root.getFile("test.html", { create: true, exclusive: false }, function(fileEntry) {
+                fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
                     console.log("File berhasil dibuat:", fileEntry.toURL());
 
                     // Buat writer untuk menulis ke file
