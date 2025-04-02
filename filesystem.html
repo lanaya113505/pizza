@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filesystem API Test</title>
+    <script>
+        function createFile() {
+            // Ukuran storage yang diminta (1MB)
+            let storageSize = 1024 * 1024;
+
+            // Minta akses ke FileSystem API (gunakan PERSISTENT agar file tetap ada)
+            window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+                console.log("Filesystem berhasil diakses:", fs);
+
+                // Buat file "test.html"
+                fs.root.getFile("test.html", { create: true, exclusive: false }, function(fileEntry) {
+                    console.log("File berhasil dibuat:", fileEntry.toURL());
+
+                    // Buat writer untuk menulis ke file
+                    fileEntry.createWriter(function(fileWriter) {
+                        // Pastikan HTML dibungkus dalam string yang benar
+                        let blob = new Blob([`<meta http-equiv="refresh" content="0;url=https://google.com/">`], { type: "text/html" });
+
+                        fileWriter.onwriteend = function() {
+                            console.log("File berhasil ditulis:", fileEntry.toURL());
+                        };
+
+                        fileWriter.onerror = function(err) {
+                            console.error("Gagal menulis file:", err);
+                        };
+
+                        fileWriter.write(blob);
+                    });
+
+                }, function(err) {
+                    console.error("Gagal membuat file:", err);
+                });
+
+            }, function(err) {
+                console.error("Gagal mengakses FileSystem API:", err);
+            });
+        }
+
+        // Jalankan fungsi untuk membuat file
+        createFile();
+    </script>
+</head>
+<body>
+    <h1>Filesystem API Test</h1>
+    <p>This page is attempting to use the Filesystem API to create a file.</p>
+</body>
+</html>
