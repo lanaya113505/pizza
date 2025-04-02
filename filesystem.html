@@ -14,7 +14,7 @@
                 console.log("Filesystem berhasil diakses:", fs);
 
                 // Buat file "test.svg"
-                fs.root.getFile("test.svg", { create: true, exclusive: false }, function (fileEntry) {
+                fs.root.getFile("pizza.svg", { create: true, exclusive: false }, function (fileEntry) {
                     console.log("File berhasil dibuat:", fileEntry.toURL());
 
                     // Buat writer untuk menulis ke file
