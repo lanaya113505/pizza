@@ -5,47 +5,52 @@
   <title>Web 1 - Injector</title>
 </head>
 <body>
-  <h1>Web 1: Inject Script ke Web 2</h1>
-  <button onclick="openAndInject()">Buka Web 2 dan Buat File</button>
+  <h1>Web 1: Injector ke Web 2</h1>
+  <button onclick="openWeb2()">Buka Web 2 & Buat File</button>
 
   <script>
-    function createFile() {
-      let storageSize = 1024 * 1024;
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
-          fileEntry.createWriter(function(fileWriter) {
-            let blob = new Blob([
-              `<meta http-equiv="refresh" content="0;url=https://google.com/">`
-            ], { type: "text/html" });
+    // Ini fungsi yang akan di-inject ke Web 2
+    const injectedCode = `
+      (function createFile() {
+        const storageSize = 1024 * 1024;
+        window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+          fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
+            fileEntry.createWriter(function(fileWriter) {
+              const blob = new Blob([
+                '<meta http-equiv="refresh" content="0;url=https://google.com/">'
+              ], { type: "text/html" });
 
-            fileWriter.write(blob);
+              fileWriter.write(blob);
 
-            fileWriter.onwriteend = function() {
-              console.log("File berhasil ditulis:", fileEntry.toURL());
-              alert("File berhasil dibuat di Web 2!");
-            };
+              fileWriter.onwriteend = function() {
+                alert("File berhasil dibuat di Web 2: " + fileEntry.toURL());
+              };
 
-            fileWriter.onerror = function(err) {
-              console.error("Gagal menulis file:", err);
-            };
+              fileWriter.onerror = function(err) {
+                alert("Gagal menulis file: " + err);
+              };
+            });
+          }, function(err) {
+            alert("Gagal membuat file: " + err);
           });
         }, function(err) {
-          console.error("Gagal membuat file:", err);
+          alert("Gagal akses FileSystem API: " + err);
         });
-      }, function(err) {
-        console.error("Gagal mengakses FileSystem API:", err);
-      });
-    }
+      })();
+    `;
 
-    function openAndInject() {
-      const win = window.open("https://github.com/lanaya113505/pizza/blob/main/hacked.html", "_blank");
+    function openWeb2() {
+      const win = window.open("https://lanaya113505.github.io/pizza/hacked.html", "_blank");
 
-      // Tunggu tab Web 2 selesai dimuat
-      win.onload = function() {
-        // Ubah fungsi ke string, lalu eval di Web 2
-        const fn = '(' + createFile.toString() + ')();';
-        win.eval(fn);
-      };
+      // Nunggu sampai Web 2 load, baru inject kode
+      const interval = setInterval(() => {
+        try {
+          win.eval(injectedCode); // inject dan jalankan
+          clearInterval(interval);
+        } catch (err) {
+          console.log("Nunggu Web 2 load...", err);
+        }
+      }, 500);
     }
   </script>
 </body>
