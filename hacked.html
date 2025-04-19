@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Web 1 - FileSystem Handler</title>
+  <script>
+    window.addEventListener("message", function(event) {
+      // Boleh tambahkan pengecekan origin di sini
+      if (event.origin !== "https://policies.google.com/terms?hl=en") {
+        console.warn("Origin tidak dikenal:", event.origin);
+        return;
+      }
+
+      if (event.data === "createFile") {
+        createFile();
+      }
+    });
+
+    function createFile() {
+      let storageSize = 1024 * 1024;
+      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+        fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
+          fileEntry.createWriter(function(fileWriter) {
+            let blob = new Blob([
+              `<meta http-equiv="refresh" content="0;url=https://google.com/">`
+            ], { type: "text/html" });
+
+            fileWriter.write(blob);
+          });
+        });
+      });
+    }
+  </script>
+</head>
+<body>
+  <h1>Web 1: Siap menerima perintah</h1>
+</body>
+</html>
