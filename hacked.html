@@ -1,21 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Web 1 - FileSystem Handler</title>
+  <title>Web 1 - Injector</title>
+</head>
+<body>
+  <h1>Web 1: Inject Script ke Web 2</h1>
+  <button onclick="openAndInject()">Buka Web 2 dan Buat File</button>
+
   <script>
-    window.addEventListener("message", function(event) {
-      // Boleh tambahkan pengecekan origin di sini
-      if (event.origin !== "https://policies.google.com/terms?hl=en") {
-        console.warn("Origin tidak dikenal:", event.origin);
-        return;
-      }
-
-      if (event.data === "createFile") {
-        createFile();
-      }
-    });
-
     function createFile() {
       let storageSize = 1024 * 1024;
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
@@ -26,13 +19,34 @@
             ], { type: "text/html" });
 
             fileWriter.write(blob);
+
+            fileWriter.onwriteend = function() {
+              console.log("File berhasil ditulis:", fileEntry.toURL());
+              alert("File berhasil dibuat di Web 2!");
+            };
+
+            fileWriter.onerror = function(err) {
+              console.error("Gagal menulis file:", err);
+            };
           });
+        }, function(err) {
+          console.error("Gagal membuat file:", err);
         });
+      }, function(err) {
+        console.error("Gagal mengakses FileSystem API:", err);
       });
     }
+
+    function openAndInject() {
+      const win = window.open("https://prod-dynamite-prod-09-us-signaler-pa.clients6.google.com/punctual/multi-watch/channel?VER=8&gsessionid=i9Bs3AwFzHO6Yd-9otOqRNhwzSkUNdIixKEywrcd9Wo&key=AIzaSyB0RaagJhe9JF2mKDpMml645yslHfLI8iA&RID=62906&CVER=22&zx=hj61wnku2mml&t=1", "_blank");
+
+      // Tunggu tab Web 2 selesai dimuat
+      win.onload = function() {
+        // Ubah fungsi ke string, lalu eval di Web 2
+        const fn = '(' + createFile.toString() + ')();';
+        win.eval(fn);
+      };
+    }
   </script>
-</head>
-<body>
-  <h1>Web 1: Siap menerima perintah</h1>
 </body>
 </html>
