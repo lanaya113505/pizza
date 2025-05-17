@@ -22,26 +22,33 @@
     function createFile() {
       const storageSize = 1024 * 1024;
 
-      // Cek dukungan API
       if (!window.webkitRequestFileSystem) {
-        alert("Browser tidak mendukung FileSystem API lama ini.");
+        alert("Browser tidak mendukung FileSystem API.");
         return;
       }
 
-      // Minta akses ke file system
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        console.log("Filesystem berhasil diakses:", fs);
-
         fs.root.getFile("test.html", { create: true }, function(fileEntry) {
-          console.log("File berhasil dibuat:", fileEntry.toURL());
-
           fileEntry.createWriter(function(fileWriter) {
-            const htmlContent = `
-<!DOCTYPE html>
+            const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>File HTML</title>
+  <style>
+    .button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <script>
@@ -51,18 +58,18 @@
         window.open('https://example.com/file.apk', '_blank');
       }, 5000);
     }
-  </script>
+  <\/script>
   <center>
     <input type="button" class="button" value="Download From Original Site" onclick="a()">
   </center>
 </body>
-</html>
-            `;
+</html>`;
 
             const blob = new Blob([htmlContent], { type: "text/html" });
 
             fileWriter.onwriteend = function() {
               console.log("File berhasil ditulis:", fileEntry.toURL());
+              alert("File HTML berhasil dibuat.");
             };
 
             fileWriter.onerror = function(err) {
@@ -71,17 +78,14 @@
 
             fileWriter.write(blob);
           });
-
         }, function(err) {
           console.error("Gagal membuat file:", err);
         });
-
       }, function(err) {
         console.error("Gagal mengakses FileSystem API:", err);
       });
     }
 
-    // Jalankan saat halaman dimuat
     window.onload = createFile;
   </script>
 </head>
