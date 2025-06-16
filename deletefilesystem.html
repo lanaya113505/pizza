@@ -1,96 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Filesystem API Test</title>
+  <meta charset="UTF-8">
+  <title>Filesystem API Fuzzing Test</title>
   <style>
-    .button {
-      background-color: #4CAF50;
-      border: none;
-      color: white;
-      padding: 15px 32px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-      font-size: 16px;
-      margin: 4px 2px;
-      cursor: pointer;
-    }
+    body { font-family: sans-serif; }
   </style>
   <script>
-    const storageSize = 1024 * 1024;
+    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
+    const totalFiles = 10; // jumlah file yang dibuat
+    const fileNames = []; // simpan nama file untuk dihapus nanti
 
-    function createFile() {
+    function randomFileName() {
+      return 'file_' + Math.random().toString(36).substr(2, 8) + '.txt';
+    }
+
+    function createFiles(fs, index = 0) {
+      if (index >= totalFiles) {
+        console.log('Semua file selesai dibuat.');
+        deleteFiles(fs, 0); // Setelah selesai membuat, langsung hapus
+        return;
+      }
+
+      const fileName = randomFileName();
+      fileNames.push(fileName);
+
+      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
+        fileEntry.createWriter(function(fileWriter) {
+          const content = 'Isi file random ' + Math.random();
+          const blob = new Blob([content], { type: 'text/plain' });
+
+          fileWriter.onwriteend = function() {
+            console.log('File dibuat:', fileName);
+            // lanjut ke file berikutnya
+            createFiles(fs, index + 1);
+          };
+
+          fileWriter.onerror = function(err) {
+            console.error('Gagal menulis file:', err);
+          };
+
+          fileWriter.write(blob);
+        });
+      }, function(err) {
+        console.error('Gagal membuat file:', err);
+      });
+    }
+
+    function deleteFiles(fs, index = 0) {
+      if (index >= fileNames.length) {
+        console.log('Semua file selesai dihapus.');
+        alert('Fuzzing selesai. Semua file berhasil dibuat dan dihapus.');
+        return;
+      }
+
+      const fileName = fileNames[index];
+
+      fs.root.getFile(fileName, { create: false }, function(fileEntry) {
+        fileEntry.remove(function() {
+          console.log('File dihapus:', fileName);
+          deleteFiles(fs, index + 1); // hapus file berikutnya
+        }, function(err) {
+          console.error('Gagal menghapus file:', err);
+          deleteFiles(fs, index + 1); // tetap lanjut meskipun error
+        });
+      }, function(err) {
+        console.error('File tidak ditemukan:', err);
+        deleteFiles(fs, index + 1);
+      });
+    }
+
+    window.onload = function() {
       if (!window.webkitRequestFileSystem) {
         alert("Browser tidak mendukung FileSystem API.");
         return;
       }
 
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("test.html", { create: true }, function(fileEntry) {
-          fileEntry.createWriter(function(fileWriter) {
-            const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset='utf-8'>
-  <title>File HTML</title>
-</head>
-<body>
-  <h1>File HTML berhasil dibuat!</h1>
-  <p>Ini adalah file yang dibuat lewat FileSystem API.</p>
-</body>
-</html>`;
-
-            const blob = new Blob([htmlContent], { type: "text/html" });
-
-            fileWriter.onwriteend = function() {
-              console.log("File berhasil ditulis:", fileEntry.toURL());
-              alert("File HTML berhasil dibuat.");
-            };
-
-            fileWriter.onerror = function(err) {
-              console.error("Gagal menulis file:", err);
-            };
-
-            fileWriter.write(blob);
-          });
-        }, function(err) {
-          console.error("Gagal membuat file:", err);
-        });
+        createFiles(fs); // mulai proses fuzzing
       }, function(err) {
-        console.error("Gagal mengakses FileSystem API:", err);
+        console.error('Gagal mengakses FileSystem API:', err);
       });
-    }
-
-    function deleteFile() {
-      if (!window.webkitRequestFileSystem) {
-        alert("Browser tidak mendukung FileSystem API.");
-        return;
-      }
-
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("test.html", { create: false }, function(fileEntry) {
-          fileEntry.remove(function() {
-            console.log("File berhasil dihapus.");
-            alert("File berhasil dihapus.");
-          }, function(err) {
-            console.error("Gagal menghapus file:", err);
-          });
-        }, function(err) {
-          console.error("File tidak ditemukan:", err);
-        });
-      }, function(err) {
-        console.error("Gagal mengakses FileSystem API:", err);
-      });
-    }
-
-    window.onload = createFile;
+    };
   </script>
 </head>
 <body>
-  <h1>Filesystem API Test</h1>
-  <p>Halaman ini mencoba membuat dan menghapus file HTML menggunakan FileSystem API (deprecated).</p>
-  <input type="button" class="button" value="Hapus File" onclick="deleteFile()">
+  <h1>Filesystem API Fuzzing Test</h1>
+  <p>Script ini secara otomatis membuat dan menghapus file di sandbox filesystem.</p>
 </body>
 </html>
