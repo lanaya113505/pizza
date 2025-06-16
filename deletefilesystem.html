@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Filesystem API Test</title>
+  <style>
+    .button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+    }
+  </style>
+  <script>
+    const storageSize = 1024 * 1024;
+
+    function createFile() {
+      if (!window.webkitRequestFileSystem) {
+        alert("Browser tidak mendukung FileSystem API.");
+        return;
+      }
+
+      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+        fs.root.getFile("test.html", { create: true }, function(fileEntry) {
+          fileEntry.createWriter(function(fileWriter) {
+            const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>File HTML</title>
+</head>
+<body>
+  <h1>File HTML berhasil dibuat!</h1>
+  <p>Ini adalah file yang dibuat lewat FileSystem API.</p>
+</body>
+</html>`;
+
+            const blob = new Blob([htmlContent], { type: "text/html" });
+
+            fileWriter.onwriteend = function() {
+              console.log("File berhasil ditulis:", fileEntry.toURL());
+              alert("File HTML berhasil dibuat.");
+            };
+
+            fileWriter.onerror = function(err) {
+              console.error("Gagal menulis file:", err);
+            };
+
+            fileWriter.write(blob);
+          });
+        }, function(err) {
+          console.error("Gagal membuat file:", err);
+        });
+      }, function(err) {
+        console.error("Gagal mengakses FileSystem API:", err);
+      });
+    }
+
+    function deleteFile() {
+      if (!window.webkitRequestFileSystem) {
+        alert("Browser tidak mendukung FileSystem API.");
+        return;
+      }
+
+      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+        fs.root.getFile("test.html", { create: false }, function(fileEntry) {
+          fileEntry.remove(function() {
+            console.log("File berhasil dihapus.");
+            alert("File berhasil dihapus.");
+          }, function(err) {
+            console.error("Gagal menghapus file:", err);
+          });
+        }, function(err) {
+          console.error("File tidak ditemukan:", err);
+        });
+      }, function(err) {
+        console.error("Gagal mengakses FileSystem API:", err);
+      });
+    }
+
+    window.onload = createFile;
+  </script>
+</head>
+<body>
+  <h1>Filesystem API Test</h1>
+  <p>Halaman ini mencoba membuat dan menghapus file HTML menggunakan FileSystem API (deprecated).</p>
+  <input type="button" class="button" value="Hapus File" onclick="deleteFile()">
+</body>
+</html>
