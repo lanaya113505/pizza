@@ -2,82 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Filesystem API Fuzzing Test</title>
-  <style>
-    body { font-family: sans-serif; }
-  </style>
+  <title>Infinite Filesystem Fuzzing</title>
   <script>
     const storageSize = 10 * 1024 * 1024; // 10MB sandbox
-    const totalFiles = 10; // jumlah file yang dibuat
-    const fileNames = []; // simpan nama file untuk dihapus nanti
 
     function randomFileName() {
-      return 'file_' + Math.random().toString(36).substr(2, 8) + '.txt';
+      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
     }
 
-    function createFiles(fs, index = 0) {
-      if (index >= totalFiles) {
-        console.log('Semua file selesai dibuat.');
-        deleteFiles(fs, 0); // Setelah selesai membuat, langsung hapus
-        return;
-      }
-
+    function fuzzingLoop(fs) {
       const fileName = randomFileName();
-      fileNames.push(fileName);
-
+      
       fs.root.getFile(fileName, { create: true }, function(fileEntry) {
         fileEntry.createWriter(function(fileWriter) {
-          const content = 'Isi file random ' + Math.random();
+          const content = 'Fuzz Content: ' + Math.random();
           const blob = new Blob([content], { type: 'text/plain' });
 
           fileWriter.onwriteend = function() {
             console.log('File dibuat:', fileName);
-            // lanjut ke file berikutnya
-            createFiles(fs, index + 1);
+            
+            // Setelah menulis, langsung hapus file
+            fileEntry.remove(function() {
+              console.log('File dihapus:', fileName);
+              // Lanjut ke iterasi berikutnya
+              setTimeout(() => fuzzingLoop(fs), 0); // next tick
+            }, function(err) {
+              console.error('Gagal menghapus file:', fileName, err);
+              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
+            });
           };
 
           fileWriter.onerror = function(err) {
-            console.error('Gagal menulis file:', err);
+            console.error('Gagal menulis file:', fileName, err);
+            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
           };
 
           fileWriter.write(blob);
-        });
-      }, function(err) {
-        console.error('Gagal membuat file:', err);
-      });
-    }
-
-    function deleteFiles(fs, index = 0) {
-      if (index >= fileNames.length) {
-        console.log('Semua file selesai dihapus.');
-        alert('Fuzzing selesai. Semua file berhasil dibuat dan dihapus.');
-        return;
-      }
-
-      const fileName = fileNames[index];
-
-      fs.root.getFile(fileName, { create: false }, function(fileEntry) {
-        fileEntry.remove(function() {
-          console.log('File dihapus:', fileName);
-          deleteFiles(fs, index + 1); // hapus file berikutnya
         }, function(err) {
-          console.error('Gagal menghapus file:', err);
-          deleteFiles(fs, index + 1); // tetap lanjut meskipun error
+          console.error('Gagal membuat writer untuk:', fileName, err);
+          setTimeout(() => fuzzingLoop(fs), 0);
         });
       }, function(err) {
-        console.error('File tidak ditemukan:', err);
-        deleteFiles(fs, index + 1);
+        console.error('Gagal membuat file:', fileName, err);
+        setTimeout(() => fuzzingLoop(fs), 0);
       });
     }
 
     window.onload = function() {
       if (!window.webkitRequestFileSystem) {
-        alert("Browser tidak mendukung FileSystem API.");
+        console.error("Browser tidak mendukung FileSystem API.");
         return;
       }
 
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        createFiles(fs); // mulai proses fuzzing
+        console.log('Mulai infinite fuzzing loop...');
+        fuzzingLoop(fs);
       }, function(err) {
         console.error('Gagal mengakses FileSystem API:', err);
       });
@@ -85,7 +64,7 @@
   </script>
 </head>
 <body>
-  <h1>Filesystem API Fuzzing Test</h1>
-  <p>Script ini secara otomatis membuat dan menghapus file di sandbox filesystem.</p>
+  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
+  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
 </body>
 </html>
