@@ -2,48 +2,40 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Auto Runner with Blob URL</title>
+  <title>Dynamic Injector</title>
 </head>
 <body>
-  <h2>🚀 Menjalankan testers.js dari FileSystem via Blob URL</h2>
+  <h2>🔥 Dynamic Code Injector dari FileSystem</h2>
+
+  <button onclick="injectModule('mod1.js')">Load mod1.js</button>
+  <button onclick="injectModule('mod2.js')">Load mod2.js</button>
+
   <script>
-    (function () {
-      window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
+    window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
 
-      if (!window.requestFileSystem) {
-        console.error("❌ FileSystem API tidak tersedia.");
-        return;
-      }
-
-      window.requestFileSystem(window.TEMPORARY, 5 * 1024 * 1024, function (fs) {
-        fs.root.getFile("testers.js", {}, function (fileEntry) {
-          fileEntry.file(function (file) {
+    function injectModule(fileName) {
+      window.requestFileSystem(window.TEMPORARY, 5 * 1024 * 1024, fs => {
+        fs.root.getFile(fileName, {}, fileEntry => {
+          fileEntry.file(file => {
             const reader = new FileReader();
+            reader.onloadend = () => {
+              const blob = new Blob([reader.result], { type: "application/javascript" });
+              const blobUrl = URL.createObjectURL(blob);
 
-            reader.onloadend = function () {
-              try {
-                const blob = new Blob([reader.result], { type: 'application/javascript' });
-                const blobURL = URL.createObjectURL(blob);
+              console.log("✅ Injecting", fileName, "via", blobUrl);
 
-                console.log("✅ Memuat testers.js dari Blob URL:", blobURL);
+              const script = document.createElement("script");
+              script.src = blobUrl;
+              script.onload = () => console.log(`🎯 ${fileName} executed`);
+              script.onerror = e => console.error("❌ Injection error:", e);
 
-                const script = document.createElement('script');
-                script.src = blobURL;
-                document.body.appendChild(script); // 🚀 Payload akan otomatis dieksekusi
-              } catch (e) {
-                console.error("❌ Gagal membuat script dari Blob:", e);
-              }
+              document.body.appendChild(script);
             };
-
             reader.readAsText(file);
           });
-        }, function (err) {
-          console.warn("⚠️ testers.js tidak ditemukan:", err);
-        });
-      }, function (err) {
-        console.error("❌ Tidak bisa akses FileSystem:", err);
-      });
-    })();
+        }, err => console.warn("⚠️ File tidak ditemukan:", err));
+      }, err => console.error("❌ Tidak bisa akses FileSystem:", err));
+    }
   </script>
 </body>
 </html>
