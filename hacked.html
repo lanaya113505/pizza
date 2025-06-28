@@ -16,7 +16,7 @@
 
     window.requestFileSystem(window.TEMPORARY, 10 * 1024 * 1024, function(fs) {
       // Coba akses file dari filesystem: URL
-      fs.root.getFile('https://lanaya113505.github.io/temporary/testers.js', {}, function(fileEntry) {
+      fs.root.getFile('filesystem:https://lanaya113505.github.io/temporary/testers.js', {}, function(fileEntry) {
         fileEntry.file(function(file) {
           const reader = new FileReader();
           reader.onloadend = function() {
