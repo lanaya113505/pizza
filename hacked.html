@@ -1,1 +1,42 @@
-<iframe src="filesystem:https://lanaya113505.github.io/temporary/evil.html"></iframe>
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Auto Runner</title>
+</head>
+<body>
+  <h2>🚀 Menjalankan testers.js dari FileSystem</h2>
+  <script>
+    (function () {
+      window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
+      if (!window.requestFileSystem) {
+        console.error("❌ FileSystem API tidak tersedia.");
+        return;
+      }
+
+      window.requestFileSystem(window.TEMPORARY, 5 * 1024 * 1024, function (fs) {
+        fs.root.getFile("testers.js", {}, function (fileEntry) {
+          fileEntry.file(function (file) {
+            const reader = new FileReader();
+            reader.onloadend = function () {
+              try {
+                console.log("✅ Menjalankan testers.js...");
+                eval(reader.result);
+              } catch (e) {
+                console.error("❌ Gagal eval:", e);
+              }
+            };
+            reader.readAsText(file);
+          });
+        }, function (err) {
+          console.warn("⚠️ testers.js tidak ditemukan:", err);
+        });
+      }, function (err) {
+        console.error("❌ Tidak bisa akses FileSystem:", err);
+      });
+    })();
+  </script>
+</body>
+</html>
