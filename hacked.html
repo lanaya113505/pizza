@@ -1,37 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>FS Read Test</title>
+  <meta charset="UTF-8">
+  <title>Dynamic Injector</title>
 </head>
 <body>
-  <h1>Isi File dari FileSystem API</h1>
-  <pre id="output">Memuat...</pre>
+  <h2>🔥 Dynamic Code Injector dari FileSystem</h2>
+
+  <button onclick="injectModule('filesystem:https://sites.google.com/temporary/mod2.js')">Load mod1.js</button>
+  <button onclick="injectModule('filesystem:https://sites.google.com/temporary/mod1.js')">Load mod2.js</button>
 
   <script>
     window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
 
-    function logOutput(msg) {
-      document.getElementById('output').textContent = msg;
-    }
+    function injectModule(fileName) {
+      window.requestFileSystem(window.TEMPORARY, 5 * 1024 * 1024, fs => {
+        fs.root.getFile(fileName, {}, fileEntry => {
+          fileEntry.file(file => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const blob = new Blob([reader.result], { type: "application/javascript" });
+              const blobUrl = URL.createObjectURL(blob);
 
-    window.requestFileSystem(window.TEMPORARY, 10 * 1024 * 1024, function(fs) {
-      // Coba akses file dari filesystem: URL
-      fs.root.getFile('filesystem:https://lanaya113505.github.io/temporary/testers.js', {}, function(fileEntry) {
-        fileEntry.file(function(file) {
-          const reader = new FileReader();
-          reader.onloadend = function() {
-            logOutput(this.result);
-          };
-          reader.readAsText(file);
-        }, function(err) {
-          logOutput("Gagal membaca file: " + err.name);
-        });
-      }, function(err) {
-        logOutput("File tidak ditemukan: " + err.name);
-      });
-    }, function(err) {
-      logOutput("Gagal akses filesystem: " + err.name);
-    });
+              console.log("✅ Injecting", fileName, "via", blobUrl);
+
+              const script = document.createElement("script");
+              script.src = blobUrl;
+              script.onload = () => console.log(`🎯 ${fileName} executed`);
+              script.onerror = e => console.error("❌ Injection error:", e);
+
+              document.body.appendChild(script);
+            };
+            reader.readAsText(file);
+          });
+        }, err => console.warn("⚠️ File tidak ditemukan:", err));
+      }, err => console.error("❌ Tidak bisa akses FileSystem:", err));
+    }
   </script>
 </body>
 </html>
