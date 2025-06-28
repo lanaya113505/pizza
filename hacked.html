@@ -1,16 +1,15 @@
-
-
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Auto Runner</title>
+  <title>Auto Runner with Blob URL</title>
 </head>
 <body>
-  <h2>🚀 Menjalankan testers.js dari FileSystem</h2>
+  <h2>🚀 Menjalankan testers.js dari FileSystem via Blob URL</h2>
   <script>
     (function () {
       window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
+
       if (!window.requestFileSystem) {
         console.error("❌ FileSystem API tidak tersedia.");
         return;
@@ -20,14 +19,22 @@
         fs.root.getFile("testers.js", {}, function (fileEntry) {
           fileEntry.file(function (file) {
             const reader = new FileReader();
+
             reader.onloadend = function () {
               try {
-                console.log("✅ Menjalankan testers.js...");
-                eval(reader.result);
+                const blob = new Blob([reader.result], { type: 'application/javascript' });
+                const blobURL = URL.createObjectURL(blob);
+
+                console.log("✅ Memuat testers.js dari Blob URL:", blobURL);
+
+                const script = document.createElement('script');
+                script.src = blobURL;
+                document.body.appendChild(script); // 🚀 Payload akan otomatis dieksekusi
               } catch (e) {
-                console.error("❌ Gagal eval:", e);
+                console.error("❌ Gagal membuat script dari Blob:", e);
               }
             };
+
             reader.readAsText(file);
           });
         }, function (err) {
