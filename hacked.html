@@ -1,24 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Hacked View</title>
+  <title>FS Read Test</title>
 </head>
 <body>
-  <h1>Isi testers.js</h1>
+  <h1>Isi File dari FileSystem API</h1>
   <pre id="output">Memuat...</pre>
 
   <script>
-    fetch('filesystem:https://lanaya113505.github.io/temporary/testers.js')
-      .then(res => {
-        if (!res.ok) throw new Error('Gagal fetch file');
-        return res.text();
-      })
-      .then(text => {
-        document.getElementById('output').textContent = text;
-      })
-      .catch(err => {
-        document.getElementById('output').textContent = 'Error: ' + err.message;
+    window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
+
+    function logOutput(msg) {
+      document.getElementById('output').textContent = msg;
+    }
+
+    window.requestFileSystem(window.TEMPORARY, 10 * 1024 * 1024, function(fs) {
+      // Coba akses file dari filesystem: URL
+      fs.root.getFile('https://lanaya113505.github.io/temporary/testers.js', {}, function(fileEntry) {
+        fileEntry.file(function(file) {
+          const reader = new FileReader();
+          reader.onloadend = function() {
+            logOutput(this.result);
+          };
+          reader.readAsText(file);
+        }, function(err) {
+          logOutput("Gagal membaca file: " + err.name);
+        });
+      }, function(err) {
+        logOutput("File tidak ditemukan: " + err.name);
       });
+    }, function(err) {
+      logOutput("Gagal akses filesystem: " + err.name);
+    });
   </script>
 </body>
 </html>
