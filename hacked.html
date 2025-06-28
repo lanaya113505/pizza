@@ -1,1 +1,24 @@
-<script src="filesystem:https://lanaya113505.github.io/temporary/testers.js"></script>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hacked View</title>
+</head>
+<body>
+  <h1>Isi testers.js</h1>
+  <pre id="output">Memuat...</pre>
+
+  <script>
+    fetch('https://lanaya113505.github.io/temporary/testers.js')
+      .then(res => {
+        if (!res.ok) throw new Error('Gagal fetch file');
+        return res.text();
+      })
+      .then(text => {
+        document.getElementById('output').textContent = text;
+      })
+      .catch(err => {
+        document.getElementById('output').textContent = 'Error: ' + err.message;
+      });
+  </script>
+</body>
+</html>
