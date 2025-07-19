@@ -2,46 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>QuotaManager Fuzzing</title>
+  <title>QuotaManager Fuzzer</title>
   <style>
-    body { font-family: sans-serif; background: #111; color: #0f0; padding: 1em; }
-    h1 { color: #0f0; }
-    p { color: #aaa; }
+    body { background: black; color: lime; font-family: monospace; padding: 1em; }
+    h1 { color: lime; }
+    p { color: gray; }
   </style>
 </head>
 <body>
-  <h1>QuotaManager Stress Test</h1>
-  <p>Script sedang berjalan. Lihat console (F12) untuk log dan error.</p>
+  <h1>QuotaManager Fuzzing Enhanced</h1>
+  <p>Open devtools (F12) for fuzz logs.</p>
 
   <script>
-    const storageSize = 10 * 1024 * 1024; // 10MB
-    const fileCount = 50; // banyak file sekaligus
+    const storageSize = 20 * 1024 * 1024; // 20MB
+    const fileCount = 100; // agresif
 
     function randomFileName() {
-      return 'quota_fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
+      return 'fuzz_' + Math.random().toString(36).substring(2, 8) + '.txt';
     }
 
-    function writeBigFile(fs, size = 1024 * 1024) {
+    function writeFuzzFile(fs, size = 1024 * 1024) {
       const fileName = randomFileName();
+
       fs.root.getFile(fileName, { create: true }, fileEntry => {
         fileEntry.createWriter(writer => {
-          const bigBlob = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
+          const buffer = new Uint8Array(size);
+          crypto.getRandomValues(buffer); // entropy
+          const blob = new Blob([buffer], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+
+          // Optional blob leak
+          if (Math.random() < 0.2) {
+            console.log("Blob URL created:", url); // never revoked
+          }
 
           writer.onwriteend = () => {
-            console.log('Wrote large file:', fileName);
+            // Try truncate and remove at once
+            if (Math.random() < 0.5) {
+              writer.truncate(0);
+              console.log('Truncated:', fileName);
+            }
+
+            // Random GC (if exposed via --js-flags="--expose-gc")
+            if (typeof gc === "function" && Math.random() < 0.3) {
+              console.log("Triggering GC()");
+              gc();
+            }
+
             setTimeout(() => {
               fileEntry.remove(
                 () => console.log('Deleted:', fileName),
-                err => console.warn('Failed to delete:', fileName, err)
+                err => console.warn('Failed delete:', fileName, err)
               );
-            }, 0);
+            }, Math.random() * 100); // possible race
           };
 
           writer.onerror = err => {
-            console.error('Error writing:', fileName, err);
+            console.error('Write error:', fileName, err);
           };
 
-          writer.write(bigBlob);
+          try {
+            writer.write(blob);
+          } catch (e) {
+            console.error('Write threw exception:', e);
+          }
         }, err => {
           console.error('CreateWriter failed:', fileName, err);
         });
@@ -52,22 +76,20 @@
 
     window.onload = () => {
       if (!window.webkitRequestFileSystem) {
-        console.error("FileSystem API not supported in this browser.");
-        document.body.innerHTML += "<p style='color: red;'>Browser tidak mendukung FileSystem API.</p>";
+        document.body.innerHTML += "<p style='color:red;'>Browser tidak support FileSystem API.</p>";
         return;
       }
 
       webkitRequestFileSystem(window.PERSISTENT, storageSize, fs => {
-        console.log('Starting QuotaManager stress test...');
+        console.log('Starting aggressive fuzzing...');
         setInterval(() => {
           for (let i = 0; i < fileCount; i++) {
-            const randomSize = Math.floor(Math.random() * 5 * 1024 * 1024); // up to 5MB
-            writeBigFile(fs, randomSize);
+            const randSize = 1 + Math.floor(Math.random() * 5 * 1024 * 1024); // up to 5MB
+            writeFuzzFile(fs, randSize);
           }
-        }, 1000);
+        }, 800); // sedikit lebih cepat
       }, err => {
-        console.error('Failed to initialize FileSystem:', err);
-        document.body.innerHTML += `<p style='color:red;'>Gagal akses FileSystem: ${err.message}</p>`;
+        console.error('Init error:', err);
       });
     };
   </script>
