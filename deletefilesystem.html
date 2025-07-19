@@ -2,69 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Infinite Filesystem Fuzzing</title>
+  <title>QuotaManager Fuzzing</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #0f0; padding: 1em; }
+    h1 { color: #0f0; }
+    p { color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>QuotaManager Stress Test</h1>
+  <p>Script sedang berjalan. Lihat console (F12) untuk log dan error.</p>
+
   <script>
-    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
+    const storageSize = 10 * 1024 * 1024; // 10MB
+    const fileCount = 50; // banyak file sekaligus
 
     function randomFileName() {
-      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
+      return 'quota_fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
     }
 
-    function fuzzingLoop(fs) {
+    function writeBigFile(fs, size = 1024 * 1024) {
       const fileName = randomFileName();
-      
-      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
-        fileEntry.createWriter(function(fileWriter) {
-          const content = 'Fuzz Content: ' + Math.random();
-          const blob = new Blob([content], { type: 'text/plain' });
+      fs.root.getFile(fileName, { create: true }, fileEntry => {
+        fileEntry.createWriter(writer => {
+          const bigBlob = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
 
-          fileWriter.onwriteend = function() {
-            console.log('File dibuat:', fileName);
-            
-            // Setelah menulis, langsung hapus file
-            fileEntry.remove(function() {
-              console.log('File dihapus:', fileName);
-              // Lanjut ke iterasi berikutnya
-              setTimeout(() => fuzzingLoop(fs), 0); // next tick
-            }, function(err) {
-              console.error('Gagal menghapus file:', fileName, err);
-              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
-            });
+          writer.onwriteend = () => {
+            console.log('Wrote large file:', fileName);
+            setTimeout(() => {
+              fileEntry.remove(
+                () => console.log('Deleted:', fileName),
+                err => console.warn('Failed to delete:', fileName, err)
+              );
+            }, 0);
           };
 
-          fileWriter.onerror = function(err) {
-            console.error('Gagal menulis file:', fileName, err);
-            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
+          writer.onerror = err => {
+            console.error('Error writing:', fileName, err);
           };
 
-          fileWriter.write(blob);
-        }, function(err) {
-          console.error('Gagal membuat writer untuk:', fileName, err);
-          setTimeout(() => fuzzingLoop(fs), 0);
+          writer.write(bigBlob);
+        }, err => {
+          console.error('CreateWriter failed:', fileName, err);
         });
-      }, function(err) {
-        console.error('Gagal membuat file:', fileName, err);
-        setTimeout(() => fuzzingLoop(fs), 0);
+      }, err => {
+        console.error('GetFile failed:', fileName, err);
       });
     }
 
-    window.onload = function() {
+    window.onload = () => {
       if (!window.webkitRequestFileSystem) {
-        console.error("Browser tidak mendukung FileSystem API.");
+        console.error("FileSystem API not supported in this browser.");
+        document.body.innerHTML += "<p style='color: red;'>Browser tidak mendukung FileSystem API.</p>";
         return;
       }
 
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        console.log('Mulai infinite fuzzing loop...');
-        fuzzingLoop(fs);
-      }, function(err) {
-        console.error('Gagal mengakses FileSystem API:', err);
+      webkitRequestFileSystem(window.PERSISTENT, storageSize, fs => {
+        console.log('Starting QuotaManager stress test...');
+        setInterval(() => {
+          for (let i = 0; i < fileCount; i++) {
+            const randomSize = Math.floor(Math.random() * 5 * 1024 * 1024); // up to 5MB
+            writeBigFile(fs, randomSize);
+          }
+        }, 1000);
+      }, err => {
+        console.error('Failed to initialize FileSystem:', err);
+        document.body.innerHTML += `<p style='color:red;'>Gagal akses FileSystem: ${err.message}</p>`;
       });
     };
   </script>
-</head>
-<body>
-  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
-  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
 </body>
 </html>
