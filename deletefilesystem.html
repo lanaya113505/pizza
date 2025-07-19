@@ -2,69 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Infinite Filesystem Fuzzing</title>
+  <title>Fuzz FileSystem + Rendering + getDisplayMedia</title>
+  <style>
+    body { background: #000; color: #0f0; font-family: monospace; }
+    .box {
+      width: 100px;
+      height: 100px;
+      background: red;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation: spin 0.1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: translate(-50%, -50%) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h1>Fuzzing Chromium</h1>
+  <p id="log">Memulai...</p>
+  <div class="box"></div>
   <script>
-    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
+    const log = msg => {
+      console.log(msg);
+      document.getElementById("log").innerText = msg;
+    };
 
-    function randomFileName() {
-      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
-    }
+    const randomFileName = () => 'fuzz_' + Math.random().toString(36).substr(2, 6) + '.txt';
 
-    function fuzzingLoop(fs) {
-      const fileName = randomFileName();
-      
-      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
-        fileEntry.createWriter(function(fileWriter) {
-          const content = 'Fuzz Content: ' + Math.random();
-          const blob = new Blob([content], { type: 'text/plain' });
-
-          fileWriter.onwriteend = function() {
-            console.log('File dibuat:', fileName);
-            
-            // Setelah menulis, langsung hapus file
-            fileEntry.remove(function() {
-              console.log('File dihapus:', fileName);
-              // Lanjut ke iterasi berikutnya
-              setTimeout(() => fuzzingLoop(fs), 0); // next tick
-            }, function(err) {
-              console.error('Gagal menghapus file:', fileName, err);
-              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
-            });
-          };
-
-          fileWriter.onerror = function(err) {
-            console.error('Gagal menulis file:', fileName, err);
-            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
-          };
-
-          fileWriter.write(blob);
-        }, function(err) {
-          console.error('Gagal membuat writer untuk:', fileName, err);
-          setTimeout(() => fuzzingLoop(fs), 0);
+    async function triggerGetDisplayMedia() {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { preferCurrentTab: true },
+          audio: false
         });
-      }, function(err) {
-        console.error('Gagal membuat file:', fileName, err);
-        setTimeout(() => fuzzingLoop(fs), 0);
-      });
+        log("Screen sharing ON");
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.muted = true;
+        document.body.appendChild(video);
+      } catch (e) {
+        log("Failed screen share: " + e.message);
+      }
     }
 
-    window.onload = function() {
+    function stressFileSystem(fs) {
+      const iterations = 100;
+      const maxSize = 4 * 1024 * 1024; // 4MB
+      for (let i = 0; i < iterations; i++) {
+        const fileName = randomFileName();
+        fs.root.getFile(fileName, { create: true }, fileEntry => {
+          fileEntry.createWriter(writer => {
+            const blob = new Blob([new Uint8Array(maxSize)], { type: 'binary/octet-stream' });
+            writer.write(blob);
+
+            // Delete right after write
+            writer.onwriteend = () => {
+              fileEntry.remove(() => {}, () => {});
+            };
+          }, () => {});
+        }, () => {});
+      }
+    }
+
+    window.onload = () => {
       if (!window.webkitRequestFileSystem) {
-        console.error("Browser tidak mendukung FileSystem API.");
+        log("FileSystem API not supported");
         return;
       }
 
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        console.log('Mulai infinite fuzzing loop...');
-        fuzzingLoop(fs);
-      }, function(err) {
-        console.error('Gagal mengakses FileSystem API:', err);
+      triggerGetDisplayMedia(); // screen share
+      webkitRequestFileSystem(window.PERSISTENT, 1024 * 1024 * 100, fs => {
+        log("Fuzzing FS + screen + render...");
+        setInterval(() => stressFileSystem(fs), 100);
+      }, e => {
+        log("Failed FS: " + e.message);
       });
     };
   </script>
-</head>
-<body>
-  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
-  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
 </body>
 </html>
