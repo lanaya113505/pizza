@@ -2,111 +2,69 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quota + Rendering HTML Injection</title>
-  <style>
-    body { background: #111; color: #0f0; font-family: monospace; padding: 1em; }
-    h1 { color: #0f0; }
-  </style>
-</head>
-<body>
-  <h1>Filesystem Injection + Rendering Fuzz</h1>
-  <p>Injecting crafted HTML into virtual FS...</p>
-
+  <title>Infinite Filesystem Fuzzing</title>
   <script>
-    const payloadHTML = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trigger Chromium Rendering Pipeline</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    .box {
-      width: 100px; height: 100px;
-      background-color: red;
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      animation: move 2s linear infinite;
-    }
-    @keyframes move {
-      0% { transform: translate(-50%, -50%) rotate(0deg); }
-      100% { transform: translate(-50%, -50%) rotate(360deg); }
-    }
-  </style>
-</head>
-<body onload="test()">
-  <h1>Trigger Chromium Rendering Pipeline</h1>
-  <h1>Simulate "Share This Tab" Interaction</h1>
-  <button id="shareButton">Share This Tab</button>
-  <div class="box"></div>
-  <script>
-    async function test() {
-      console.log(\`[Injected HTML Trigger]\`);
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true, preferCurrentTab: true, audio: false
-        });
-        const videoElement = document.createElement('video');
-        videoElement.srcObject = stream;
-        videoElement.autoplay = true;
-        document.body.appendChild(videoElement);
-      } catch (error) {
-        console.error("Screen share failed:", error);
-      }
-    };
-    function triggerRenderingPipeline() {
-      const box = document.querySelector('.box');
-      let rotation = 0;
-      function update() {
-        rotation += 1;
-        box.style.transform = \`translate(-50%, -50%) rotate(\${rotation}deg)\`;
-        requestAnimationFrame(update);
-      }
-      update();
-    }
-    triggerRenderingPipeline();
-  </script>
-</body>
-</html>`;
+    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
 
-    function writeHTMLFile(fs) {
-      const name = 'render_injection_' + Date.now() + '.html';
-      fs.root.getFile(name, { create: true }, fileEntry => {
-        fileEntry.createWriter(writer => {
-          const blob = new Blob([payloadHTML], { type: 'text/html' });
+    function randomFileName() {
+      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
+    }
 
-          writer.onwriteend = () => {
-            console.log('[+] Injected HTML file:', name);
+    function fuzzingLoop(fs) {
+      const fileName = randomFileName();
+      
+      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
+        fileEntry.createWriter(function(fileWriter) {
+          const content = 'Fuzz Content: ' + Math.random();
+          const blob = new Blob([content], { type: 'text/plain' });
+
+          fileWriter.onwriteend = function() {
+            console.log('File dibuat:', fileName);
+            
+            // Setelah menulis, langsung hapus file
+            fileEntry.remove(function() {
+              console.log('File dihapus:', fileName);
+              // Lanjut ke iterasi berikutnya
+              setTimeout(() => fuzzingLoop(fs), 0); // next tick
+            }, function(err) {
+              console.error('Gagal menghapus file:', fileName, err);
+              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
+            });
           };
 
-          writer.onerror = err => {
-            console.error('[!] Error writing HTML:', name, err);
+          fileWriter.onerror = function(err) {
+            console.error('Gagal menulis file:', fileName, err);
+            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
           };
 
-          writer.write(blob);
-        }, err => {
-          console.error('CreateWriter failed:', name, err);
+          fileWriter.write(blob);
+        }, function(err) {
+          console.error('Gagal membuat writer untuk:', fileName, err);
+          setTimeout(() => fuzzingLoop(fs), 0);
         });
-      }, err => {
-        console.error('GetFile failed:', name, err);
+      }, function(err) {
+        console.error('Gagal membuat file:', fileName, err);
+        setTimeout(() => fuzzingLoop(fs), 0);
       });
     }
 
-    window.onload = () => {
+    window.onload = function() {
       if (!window.webkitRequestFileSystem) {
-        console.error("FileSystem API not supported.");
+        console.error("Browser tidak mendukung FileSystem API.");
         return;
       }
 
-      webkitRequestFileSystem(window.PERSISTENT, 1024 * 1024 * 100, fs => {
-        console.log('[*] Filesystem ready.');
-        setInterval(() => writeHTMLFile(fs), 3000); // tulis HTML setiap 3 detik
-      }, err => {
-        console.error('FileSystem init failed:', err);
+      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
+        console.log('Mulai infinite fuzzing loop...');
+        fuzzingLoop(fs);
+      }, function(err) {
+        console.error('Gagal mengakses FileSystem API:', err);
       });
     };
   </script>
+</head>
+<body>
+  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
+  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
 </body>
 </html>
