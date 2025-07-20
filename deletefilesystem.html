@@ -1,84 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>QuotaManager + Renderer Stress</title>
-  <style>
-    body { background: black; color: lime; font-family: monospace; }
-    canvas { display: block; margin: 1em auto; background: #111; }
-  </style>
+  <title>Info Perangkat dan FileSystem</title>
 </head>
 <body>
-  <h1>🔥 Fuzzing FileSystem + Rendering</h1>
-  <p id="log">Starting...</p>
-  <canvas id="cvs" width="256" height="256"></canvas>
+  <h1>Info Perangkat</h1>
+  <pre id="info"></pre>
 
-<script>
-const storageSize = 100 * 1024 * 1024; // 100MB
-const fileCount = 100;
+  <script>
+    const info = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      vendor: navigator.vendor,
+      cookieEnabled: navigator.cookieEnabled,
+    };
 
-function randomFileName() {
-  return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.bin';
-}
+    document.getElementById("info").textContent = JSON.stringify(info, null, 2);
 
-function writeFile(fs, size) {
-  const name = randomFileName();
-  fs.root.getFile(name, {create: true}, fileEntry => {
-    fileEntry.createWriter(writer => {
-      const data = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
-      writer.onwriteend = () => {
-        fileEntry.remove(() => {}, () => {});
-      };
-      writer.onerror = err => console.warn('Writer error:', err);
-      writer.write(data);
-    });
-  });
-}
+    // Cek dukungan webkitRequestFileSystem
+    if (window.webkitRequestFileSystem) {
+      window.webkitRequestFileSystem(
+        window.TEMPORARY,
+        1024 * 1024,
+        function(fs) {
+          fs.root.getFile("device_info.txt", { create: true }, function(fileEntry) {
+            fileEntry.createWriter(function(fileWriter) {
+              const blob = new Blob([JSON.stringify(info, null, 2)], { type: "text/plain" });
+              fileWriter.write(blob);
 
-function stressFileSystem(fs) {
-  setInterval(() => {
-    for (let i = 0; i < fileCount; i++) {
-      const size = Math.random() * 5 * 1024 * 1024; // up to 5MB
-      writeFile(fs, size);
+              console.log("File device_info.txt berhasil ditulis.");
+            }, function(err) {
+              console.error("Gagal menulis file:", err);
+            });
+          });
+        },
+        function(err) {
+          console.error("Gagal membuat file system:", err);
+        }
+      );
+    } else {
+      console.warn("webkitRequestFileSystem tidak didukung di browser ini.");
     }
-    if (window.gc) gc(); // force GC
-  }, 100);
-}
-
-// Canvas renderer (Skia / raster)
-function stressCanvas() {
-  const ctx = document.getElementById('cvs').getContext('2d');
-  function draw() {
-    for (let i = 0; i < 100; i++) {
-      const x = Math.random() * 256;
-      const y = Math.random() * 256;
-      const r = Math.random() * 100;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${Math.random()*360}, 100%, 50%)`;
-      ctx.fill();
-    }
-    requestAnimationFrame(draw);
-  }
-  draw();
-}
-
-function startFuzzing() {
-  if (!window.webkitRequestFileSystem) {
-    document.getElementById("log").textContent = "❌ FileSystem API tidak tersedia!";
-    return;
-  }
-
-  webkitRequestFileSystem(window.PERSISTENT, storageSize, fs => {
-    document.getElementById("log").textContent = "🚀 Fuzzing berjalan...";
-    stressFileSystem(fs);
-    stressCanvas();
-  }, err => {
-    document.getElementById("log").textContent = "❌ Gagal inisialisasi FileSystem: " + err.message;
-  });
-}
-
-startFuzzing();
-</script>
+  </script>
 </body>
 </html>
