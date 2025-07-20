@@ -1,67 +1,84 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Quota + Skia SkEdge Abuse</title>
+  <meta charset="utf-8">
+  <title>QuotaManager + Renderer Stress</title>
   <style>
     body { background: black; color: lime; font-family: monospace; }
-    canvas { position: absolute; top: 0; left: 0; }
+    canvas { display: block; margin: 1em auto; background: #111; }
   </style>
 </head>
 <body>
-  <h1>Skia SkEdge + FileSystem Stress</h1>
-  <canvas id="canvas" width="800" height="600"></canvas>
+  <h1>🔥 Fuzzing FileSystem + Rendering</h1>
+  <p id="log">Starting...</p>
+  <canvas id="cvs" width="256" height="256"></canvas>
 
-  <script>
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+<script>
+const storageSize = 100 * 1024 * 1024; // 100MB
+const fileCount = 100;
 
-    const fileSize = 1024 * 1024 * 3; // 3MB
-    const fileCount = 20;
+function randomFileName() {
+  return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.bin';
+}
 
-    function generateHeavyPath() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+function writeFile(fs, size) {
+  const name = randomFileName();
+  fs.root.getFile(name, {create: true}, fileEntry => {
+    fileEntry.createWriter(writer => {
+      const data = new Blob([new Uint8Array(size)], { type: 'application/octet-stream' });
+      writer.onwriteend = () => {
+        fileEntry.remove(() => {}, () => {});
+      };
+      writer.onerror = err => console.warn('Writer error:', err);
+      writer.write(data);
+    });
+  });
+}
+
+function stressFileSystem(fs) {
+  setInterval(() => {
+    for (let i = 0; i < fileCount; i++) {
+      const size = Math.random() * 5 * 1024 * 1024; // up to 5MB
+      writeFile(fs, size);
+    }
+    if (window.gc) gc(); // force GC
+  }, 100);
+}
+
+// Canvas renderer (Skia / raster)
+function stressCanvas() {
+  const ctx = document.getElementById('cvs').getContext('2d');
+  function draw() {
+    for (let i = 0; i < 100; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const r = Math.random() * 100;
       ctx.beginPath();
-      for (let i = 0; i < 500; i++) {
-        ctx.moveTo(Math.random()*800, Math.random()*600);
-        ctx.bezierCurveTo(Math.random()*800, Math.random()*600, Math.random()*800, Math.random()*600, Math.random()*800, Math.random()*600);
-      }
-      ctx.stroke();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${Math.random()*360}, 100%, 50%)`;
+      ctx.fill();
     }
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
 
-    function stressFileSystem(fs) {
-      for (let i = 0; i < fileCount; i++) {
-        const name = 'skedge_' + Math.random().toString(36).substr(2, 6);
-        fs.root.getFile(name, { create: true }, fileEntry => {
-          fileEntry.createWriter(writer => {
-            const blob = new Blob([new Uint8Array(fileSize)]);
-            writer.write(blob);
-            writer.onwriteend = () => {
-              // delete after write to simulate race
-              fileEntry.remove(() => {}, () => {});
-            };
-          });
-        });
-      }
-    }
+function startFuzzing() {
+  if (!window.webkitRequestFileSystem) {
+    document.getElementById("log").textContent = "❌ FileSystem API tidak tersedia!";
+    return;
+  }
 
-    function fuzzLoop(fs) {
-      setInterval(() => {
-        generateHeavyPath();
-        if (window.gc) window.gc(); // trigger V8 GC if --expose-gc is enabled
-        stressFileSystem(fs);
-      }, 200);
-    }
+  webkitRequestFileSystem(window.PERSISTENT, storageSize, fs => {
+    document.getElementById("log").textContent = "🚀 Fuzzing berjalan...";
+    stressFileSystem(fs);
+    stressCanvas();
+  }, err => {
+    document.getElementById("log").textContent = "❌ Gagal inisialisasi FileSystem: " + err.message;
+  });
+}
 
-    if (window.webkitRequestFileSystem) {
-      webkitRequestFileSystem(window.PERSISTENT, 100 * 1024 * 1024, fs => {
-        fuzzLoop(fs);
-      }, err => {
-        console.error("FS error", err);
-      });
-    } else {
-      console.warn("FileSystem API not supported");
-    }
-  </script>
+startFuzzing();
+</script>
 </body>
 </html>
