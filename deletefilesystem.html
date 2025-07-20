@@ -2,87 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Fuzz FileSystem + Rendering + getDisplayMedia</title>
+  <title>Quota + Skia SkEdge Abuse</title>
   <style>
-    body { background: #000; color: #0f0; font-family: monospace; }
-    .box {
-      width: 100px;
-      height: 100px;
-      background: red;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      animation: spin 0.1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: translate(-50%, -50%) rotate(0deg); }
-      100% { transform: translate(-50%, -50%) rotate(360deg); }
-    }
+    body { background: black; color: lime; font-family: monospace; }
+    canvas { position: absolute; top: 0; left: 0; }
   </style>
 </head>
 <body>
-  <h1>Fuzzing Chromium</h1>
-  <p id="log">Memulai...</p>
-  <div class="box"></div>
+  <h1>Skia SkEdge + FileSystem Stress</h1>
+  <canvas id="canvas" width="800" height="600"></canvas>
+
   <script>
-    const log = msg => {
-      console.log(msg);
-      document.getElementById("log").innerText = msg;
-    };
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-    const randomFileName = () => 'fuzz_' + Math.random().toString(36).substr(2, 6) + '.txt';
+    const fileSize = 1024 * 1024 * 3; // 3MB
+    const fileCount = 20;
 
-    async function triggerGetDisplayMedia() {
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { preferCurrentTab: true },
-          audio: false
-        });
-        log("Screen sharing ON");
-        const video = document.createElement("video");
-        video.srcObject = stream;
-        video.autoplay = true;
-        video.muted = true;
-        document.body.appendChild(video);
-      } catch (e) {
-        log("Failed screen share: " + e.message);
+    function generateHeavyPath() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      for (let i = 0; i < 500; i++) {
+        ctx.moveTo(Math.random()*800, Math.random()*600);
+        ctx.bezierCurveTo(Math.random()*800, Math.random()*600, Math.random()*800, Math.random()*600, Math.random()*800, Math.random()*600);
       }
+      ctx.stroke();
     }
 
     function stressFileSystem(fs) {
-      const iterations = 100;
-      const maxSize = 4 * 1024 * 1024; // 4MB
-      for (let i = 0; i < iterations; i++) {
-        const fileName = randomFileName();
-        fs.root.getFile(fileName, { create: true }, fileEntry => {
+      for (let i = 0; i < fileCount; i++) {
+        const name = 'skedge_' + Math.random().toString(36).substr(2, 6);
+        fs.root.getFile(name, { create: true }, fileEntry => {
           fileEntry.createWriter(writer => {
-            const blob = new Blob([new Uint8Array(maxSize)], { type: 'binary/octet-stream' });
+            const blob = new Blob([new Uint8Array(fileSize)]);
             writer.write(blob);
-
-            // Delete right after write
             writer.onwriteend = () => {
+              // delete after write to simulate race
               fileEntry.remove(() => {}, () => {});
             };
-          }, () => {});
-        }, () => {});
+          });
+        });
       }
     }
 
-    window.onload = () => {
-      if (!window.webkitRequestFileSystem) {
-        log("FileSystem API not supported");
-        return;
-      }
+    function fuzzLoop(fs) {
+      setInterval(() => {
+        generateHeavyPath();
+        if (window.gc) window.gc(); // trigger V8 GC if --expose-gc is enabled
+        stressFileSystem(fs);
+      }, 200);
+    }
 
-      triggerGetDisplayMedia(); // screen share
-      webkitRequestFileSystem(window.PERSISTENT, 1024 * 1024 * 100, fs => {
-        log("Fuzzing FS + screen + render...");
-        setInterval(() => stressFileSystem(fs), 100);
-      }, e => {
-        log("Failed FS: " + e.message);
+    if (window.webkitRequestFileSystem) {
+      webkitRequestFileSystem(window.PERSISTENT, 100 * 1024 * 1024, fs => {
+        fuzzLoop(fs);
+      }, err => {
+        console.error("FS error", err);
       });
-    };
+    } else {
+      console.warn("FileSystem API not supported");
+    }
   </script>
 </body>
 </html>
