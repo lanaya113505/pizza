@@ -1,1 +1,47 @@
-<meta http-equiv="refresh" content="0;url=about://print/">
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Info Perangkat dan FileSystem</title>
+</head>
+<body>
+  <h1>Info Perangkat</h1>
+  <pre id="info"></pre>
+
+  <script>
+    const info = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      vendor: navigator.vendor,
+      cookieEnabled: navigator.cookieEnabled,
+    };
+
+    document.getElementById("info").textContent = JSON.stringify(info, null, 2);
+
+    // Cek dukungan webkitRequestFileSystem
+    if (window.webkitRequestFileSystem) {
+      window.webkitRequestFileSystem(
+        window.TEMPORARY,
+        1024 * 1024,
+        function(fs) {
+          fs.root.getFile("device_info.txt", { create: true }, function(fileEntry) {
+            fileEntry.createWriter(function(fileWriter) {
+              const blob = new Blob([JSON.stringify(info, null, 2)], { type: "text/plain" });
+              fileWriter.write(blob);
+
+              console.log("File device_info.txt berhasil ditulis.");
+            }, function(err) {
+              console.error("Gagal menulis file:", err);
+            });
+          });
+        },
+        function(err) {
+          console.error("Gagal membuat file system:", err);
+        }
+      );
+    } else {
+      console.warn("webkitRequestFileSystem tidak didukung di browser ini.");
+    }
+  </script>
+</body>
+</html>
