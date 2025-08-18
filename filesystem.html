@@ -1,69 +1,52 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Infinite Filesystem Fuzzing</title>
-  <script>
-    const storageSize = 10 * 1024 * 1024; // 10MB sandbox
-
-    function randomFileName() {
-      return 'fuzz_' + Math.random().toString(36).substr(2, 8) + '.txt';
-    }
-
-    function fuzzingLoop(fs) {
-      const fileName = randomFileName();
-      
-      fs.root.getFile(fileName, { create: true }, function(fileEntry) {
-        fileEntry.createWriter(function(fileWriter) {
-          const content = 'Fuzz Content: ' + Math.random();
-          const blob = new Blob([content], { type: 'text/plain' });
-
-          fileWriter.onwriteend = function() {
-            console.log('File dibuat:', fileName);
-            
-            // Setelah menulis, langsung hapus file
-            fileEntry.remove(function() {
-              console.log('File dihapus:', fileName);
-              // Lanjut ke iterasi berikutnya
-              setTimeout(() => fuzzingLoop(fs), 0); // next tick
-            }, function(err) {
-              console.error('Gagal menghapus file:', fileName, err);
-              setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut
-            });
-          };
-
-          fileWriter.onerror = function(err) {
-            console.error('Gagal menulis file:', fileName, err);
-            setTimeout(() => fuzzingLoop(fs), 0); // tetap lanjut meski error
-          };
-
-          fileWriter.write(blob);
-        }, function(err) {
-          console.error('Gagal membuat writer untuk:', fileName, err);
-          setTimeout(() => fuzzingLoop(fs), 0);
-        });
-      }, function(err) {
-        console.error('Gagal membuat file:', fileName, err);
-        setTimeout(() => fuzzingLoop(fs), 0);
-      });
-    }
-
-    window.onload = function() {
-      if (!window.webkitRequestFileSystem) {
-        console.error("Browser tidak mendukung FileSystem API.");
-        return;
-      }
-
-      window.webkitRequestFileSystem(window.PERSISTENT, storageSize, function(fs) {
-        console.log('Mulai infinite fuzzing loop...');
-        fuzzingLoop(fs);
-      }, function(err) {
-        console.error('Gagal mengakses FileSystem API:', err);
-      });
-    };
-  </script>
+<meta charset="UTF-8">
+<title>Stress Test FileWriter</title>
 </head>
 <body>
-  <h1>Infinite Filesystem Fuzzing Test (No Alert)</h1>
-  <p>Fuzzing berjalan tanpa henti. Lihat console untuk progress.</p>
+<h1>Stress Test: Membuat Banyak File Besar</h1>
+<button id="startBtn">Mulai Stress Test</button>
+<pre id="log"></pre>
+
+<script>
+function log(msg) {
+    const pre = document.getElementById('log');
+    pre.textContent += msg + "\n";
+    console.log(msg);
+}
+
+function writeLargeFile(fs, name, sizeMB) {
+    return new Promise((resolve, reject) => {
+        fs.root.getFile(name, {create: true}, fileEntry => {
+            fileEntry.createWriter(fileWriter => {
+                const blob = new Blob([new Uint8Array(sizeMB * 1024 * 1024)]);
+                fileWriter.onwriteend = () => {
+                    log('File dibuat: ' + name);
+                    resolve();
+                };
+                fileWriter.onerror = reject;
+                fileWriter.write(blob);
+            }, reject);
+        }, reject);
+    });
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+    window.webkitRequestFileSystem(window.TEMPORARY, 1024*1024*1024, async fs => {
+        const files = [];
+        for (let i = 0; i < 50; i++) { // 50 file
+            files.push(writeLargeFile(fs, 'stressfile_' + i + '.bin', 200)); // 200 MB per file
+        }
+
+        try {
+            await Promise.all(files);
+            log('Semua file stress dibuat tanpa error');
+        } catch(e) {
+            log('Error saat stress test: ' + e);
+        }
+    }, err => log('Error requestFileSystem: ' + err));
+});
+</script>
 </body>
 </html>
