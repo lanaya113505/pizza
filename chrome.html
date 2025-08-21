@@ -1,47 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-  <title>Info Perangkat dan FileSystem</title>
+  <meta charset="UTF-8">
+  <title>Stress TypedArray</title>
 </head>
 <body>
-  <h1>Info Perangkat</h1>
-  <pre id="info"></pre>
+  <h2>Stress Test TypedArray</h2>
+  <p>Cek console (F12) untuk log hasilnya.</p>
 
   <script>
-    const info = {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language,
-      vendor: navigator.vendor,
-      cookieEnabled: navigator.cookieEnabled,
-    };
+    'use strict';
 
-    document.getElementById("info").textContent = JSON.stringify(info, null, 2);
+    // Fungsi untuk memicu Maglev JIT / TurboFan
+    function stressTypedArray(n) {
+        const arr = new Uint8Array(n);
 
-    // Cek dukungan webkitRequestFileSystem
-    if (window.webkitRequestFileSystem) {
-      window.webkitRequestFileSystem(
-        window.TEMPORARY,
-        1024 * 1024,
-        function(fs) {
-          fs.root.getFile("device_info.txt", { create: true }, function(fileEntry) {
-            fileEntry.createWriter(function(fileWriter) {
-              const blob = new Blob([JSON.stringify(info, null, 2)], { type: "text/plain" });
-              fileWriter.write(blob);
-
-              console.log("File device_info.txt berhasil ditulis.");
-            }, function(err) {
-              console.error("Gagal menulis file:", err);
-            });
-          });
-        },
-        function(err) {
-          console.error("Gagal membuat file system:", err);
+        for (let i = 0; i < arr.length; i++) {
+            arr[i] = i & 0xff;
         }
-      );
-    } else {
-      console.warn("webkitRequestFileSystem tidak didukung di browser ini.");
+
+        // Operasi BigInt untuk memaksa internal type conversion
+        let sum = 0n;
+        for (let i = 0; i < arr.length; i++) {
+            sum += BigInt(arr[i]);
+        }
+
+        return sum;
     }
+
+    // Loop berat untuk memicu JIT
+    for (let i = 0; i < 1_000_000; i++) {
+        stressTypedArray(1024 * 1024); // 1 MB array
+    }
+
+    console.log("Done");
   </script>
 </body>
 </html>
