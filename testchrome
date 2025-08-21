@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Stress TypedArray Bertahap</title>
+</head>
+<body>
+  <h2>Stress Test TypedArray Bertahap</h2>
+  <p>Cek console (F12) untuk log progres.</p>
+
+  <script>
+    'use strict';
+
+    function stressTypedArray(n) {
+        const arr = new Uint8Array(n);
+        for (let i = 0; i < arr.length; i++) {
+            arr[i] = i & 0xff;
+        }
+
+        let sum = 0n;
+        for (let i = 0; i < arr.length; i++) {
+            sum += BigInt(arr[i]);
+        }
+        return sum;
+    }
+
+    let i = 0;
+    const total = 100_000; // bisa diset besar (default 1 juta)
+    const size = 1024 * 1024; // 1MB
+
+    function step() {
+        for (let j = 0; j < 50 && i < total; j++, i++) {
+            stressTypedArray(size);
+        }
+        console.log(`Progres: ${i}/${total}`);
+        
+        if (i < total) {
+            requestAnimationFrame(step);
+        } else {
+            console.log("Done ✅");
+        }
+    }
+
+    requestAnimationFrame(step);
+  </script>
+</body>
+</html>
