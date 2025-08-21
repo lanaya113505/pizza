@@ -1,52 +1,47 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-<meta charset="UTF-8">
-<title>Stress Test FileWriter</title>
+  <meta charset="UTF-8">
+  <title>Stress TypedArray Bertahap</title>
 </head>
 <body>
-<h1>Stress Test: Membuat Banyak File Besar</h1>
-<button id="startBtn">Mulai Stress Test</button>
-<pre id="log"></pre>
+  <h2>Stress Test TypedArray Bertahap</h2>
+  <p>Cek console (F12) untuk log progres.</p>
 
-<script>
-function log(msg) {
-    const pre = document.getElementById('log');
-    pre.textContent += msg + "\n";
-    console.log(msg);
-}
+  <script>
+    'use strict';
 
-function writeLargeFile(fs, name, sizeMB) {
-    return new Promise((resolve, reject) => {
-        fs.root.getFile(name, {create: true}, fileEntry => {
-            fileEntry.createWriter(fileWriter => {
-                const blob = new Blob([new Uint8Array(sizeMB * 1024 * 1024)]);
-                fileWriter.onwriteend = () => {
-                    log('File dibuat: ' + name);
-                    resolve();
-                };
-                fileWriter.onerror = reject;
-                fileWriter.write(blob);
-            }, reject);
-        }, reject);
-    });
-}
-
-document.getElementById('startBtn').addEventListener('click', () => {
-    window.webkitRequestFileSystem(window.TEMPORARY, 1024*1024*1024, async fs => {
-        const files = [];
-        for (let i = 0; i < 50; i++) { // 50 file
-            files.push(writeLargeFile(fs, 'stressfile_' + i + '.bin', 200)); // 200 MB per file
+    function stressTypedArray(n) {
+        const arr = new Uint8Array(n);
+        for (let i = 0; i < arr.length; i++) {
+            arr[i] = i & 0xff;
         }
 
-        try {
-            await Promise.all(files);
-            log('Semua file stress dibuat tanpa error');
-        } catch(e) {
-            log('Error saat stress test: ' + e);
+        let sum = 0n;
+        for (let i = 0; i < arr.length; i++) {
+            sum += BigInt(arr[i]);
         }
-    }, err => log('Error requestFileSystem: ' + err));
-});
-</script>
+        return sum;
+    }
+
+    let i = 0;
+    const total = 100_000; // bisa diset besar (default 1 juta)
+    const size = 1024 * 1024; // 1MB
+
+    function step() {
+        for (let j = 0; j < 50 && i < total; j++, i++) {
+            stressTypedArray(size);
+        }
+        console.log(`Progres: ${i}/${total}`);
+        
+        if (i < total) {
+            requestAnimationFrame(step);
+        } else {
+            console.log("Done ✅");
+        }
+    }
+
+    requestAnimationFrame(step);
+  </script>
 </body>
 </html>
