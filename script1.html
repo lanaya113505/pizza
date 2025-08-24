@@ -1,0 +1,284 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ultimate TypedArray + BigInt Stress Suite</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; }
+    body{ margin:0; padding:24px; background:#0b0f14; color:#e6edf3; }
+    h1{ margin:0 0 12px; font-size:20px; }
+    .card{ background:#10161f; border:1px solid #1f2a36; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 6px 24px rgba(0,0,0,.25); }
+    label{ display:inline-flex; align-items:center; gap:8px; margin-right:16px; margin-bottom:8px; }
+    input, select{ background:#0d131a; color:#e6edf3; border:1px solid #1f2a36; border-radius:8px; padding:8px 10px; }
+    input[type="checkbox"]{ width:auto; }
+    button{ background:#1b2a3a; color:#e6edf3; border:1px solid #2b3b4f; border-radius:10px; padding:10px 14px; cursor:pointer; }
+    button:hover{ filter:brightness(1.1); }
+    #log{ background:#0a0f16; border:1px solid #1c2835; border-radius:10px; padding:12px; height:300px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; }
+    .row{ display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+    .muted{ color:#8b99a9; font-size:12px; }
+    .warn{ color:#f0c674; }
+  </style>
+</head>
+<body>
+  <h1>Ultimate TypedArray + BigInt Stress Suite</h1>
+  <div class="card">
+    <div class="row">
+      <label>Ukuran (MiB): <input id="sizeMB" type="number" value="64" min="1" step="1"/></label>
+      <label>Iterasi/pekerjaan: <input id="iterations" type="number" value="500" min="1" step="1"/></label>
+      <label><input id="useWorkers" type="checkbox" /> Gunakan Web Workers</label>
+      <label>Jumlah Workers: <input id="workerCount" type="number" value="4" min="1" step="1"/></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <div class="muted">TypedArray yang diuji:</div>
+        <label><input class="typeOpt" type="checkbox" value="Uint8Array" checked/> Uint8Array</label>
+        <label><input class="typeOpt" type="checkbox" value="Uint16Array" checked/> Uint16Array</label>
+        <label><input class="typeOpt" type="checkbox" value="Uint32Array" checked/> Uint32Array</label>
+        <label><input class="typeOpt" type="checkbox" value="BigInt64Array" checked/> BigInt64Array</label>
+        <label><input class="typeOpt" type="checkbox" value="Float64Array" checked/> Float64Array</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <div class="muted">Pola isi (pilih salah satu):</div>
+        <label><input name="pattern" type="radio" value="linear" checked/> linear (i & 0xff)</label>
+        <label><input name="pattern" type="radio" value="xor"/> xor/shift</label>
+        <label><input name="pattern" type="radio" value="lcg"/> pseudo-random (LCG)</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <div class="muted">Operasi beban BigInt:</div>
+        <label><input name="op" type="radio" value="sum" checked/> sum</label>
+        <label><input name="op" type="radio" value="mix"/> mix (mul/xor/shift)</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="run">Jalankan Stress</button>
+      <button id="stop">Stop</button>
+      <span class="muted">Catatan: Konfigurasi berat dapat membuat browser panas atau tidak responsif. Mulai kecil dulu. <span class="warn">⚠️</span></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <div>Log</div>
+      <button id="clear">Clear Log</button>
+    </div>
+    <pre id="log"></pre>
+  </div>
+
+<script>
+'use strict';
+(function(){
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const logEl = $('#log');
+  let stopFlag = false;
+
+  function log(...args){
+    const line = args.map(String).join(' ');
+    logEl.textContent += line + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log('[stress]', ...args);
+  }
+
+  function getPattern(){
+    return document.querySelector('input[name="pattern"]:checked').value;
+  }
+  function getOp(){
+    return document.querySelector('input[name="op"]:checked').value;
+  }
+
+  // === Core stress (single task) ===
+  function stressTypedArrayTask(TCtorName, bytes, iterations, pattern, op){
+    const TCtor = self[TCtorName];
+    if (!TCtor) throw new Error('Unknown type: ' + TCtorName);
+    const BPE = TCtor.BYTES_PER_ELEMENT || 1;
+    const len = Math.max(1, (bytes / BPE) | 0);
+
+    // allocate once per iteration? For stronger GC stress, allocate every loop.
+    // To keep closer to original, allocate inside the loop.
+    const rem16 = len % 16;
+
+    function fill(arr){
+      // pattern writes should avoid NaN; clamp to small ints for float arrays too.
+      let i = 0;
+      switch(pattern){
+        case 'xor': {
+          for (; i < len - rem16; i += 16){
+            arr[i] = (i ^ (i<<3)) & 0xff; arr[i+1] = ((i+1) ^ ((i+1)<<3)) & 0xff;
+            arr[i+2] = (i+2 ^ (i+2<<3)) & 0xff; arr[i+3] = (i+3 ^ (i+3<<3)) & 0xff;
+            arr[i+4] = (i+4 ^ (i+4<<3)) & 0xff; arr[i+5] = (i+5 ^ (i+5<<3)) & 0xff;
+            arr[i+6] = (i+6 ^ (i+6<<3)) & 0xff; arr[i+7] = (i+7 ^ (i+7<<3)) & 0xff;
+            arr[i+8] = (i+8 ^ (i+8<<3)) & 0xff; arr[i+9] = (i+9 ^ (i+9<<3)) & 0xff;
+            arr[i+10] = (i+10 ^ (i+10<<3)) & 0xff; arr[i+11] = (i+11 ^ (i+11<<3)) & 0xff;
+            arr[i+12] = (i+12 ^ (i+12<<3)) & 0xff; arr[i+13] = (i+13 ^ (i+13<<3)) & 0xff;
+            arr[i+14] = (i+14 ^ (i+14<<3)) & 0xff; arr[i+15] = (i+15 ^ (i+15<<3)) & 0xff;
+          }
+          for (; i < len; i++) arr[i] = (i ^ (i<<3)) & 0xff;
+          break;
+        }
+        case 'lcg': {
+          // simple LCG
+          let seed = 0x9e3779b9 ^ len;
+          const a = 1664525>>>0, c = 1013904223>>>0;
+          for (; i < len - rem16; i += 16){
+            seed = (a*seed + c)>>>0; arr[i] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+1] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+2] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+3] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+4] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+5] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+6] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+7] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+8] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+9] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+10] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+11] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+12] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+13] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+14] = seed & 0xff;
+            seed = (a*seed + c)>>>0; arr[i+15] = seed & 0xff;
+          }
+          for (; i < len; i++){ seed = (a*seed + c)>>>0; arr[i] = seed & 0xff; }
+          break;
+        }
+        case 'linear':
+        default: {
+          for (; i < len - rem16; i += 16){
+            arr[i] = i & 0xff; arr[i+1] = (i+1) & 0xff; arr[i+2] = (i+2) & 0xff; arr[i+3] = (i+3) & 0xff;
+            arr[i+4] = (i+4) & 0xff; arr[i+5] = (i+5) & 0xff; arr[i+6] = (i+6) & 0xff; arr[i+7] = (i+7) & 0xff;
+            arr[i+8] = (i+8) & 0xff; arr[i+9] = (i+9) & 0xff; arr[i+10] = (i+10) & 0xff; arr[i+11] = (i+11) & 0xff;
+            arr[i+12] = (i+12) & 0xff; arr[i+13] = (i+13) & 0xff; arr[i+14] = (i+14) & 0xff; arr[i+15] = (i+15) & 0xff;
+          }
+          for (; i < len; i++) arr[i] = i & 0xff;
+        }
+      }
+    }
+
+    let checksum = 0n; // BigInt accumulator
+
+    function reduce(arr){
+      let s = 0n; let i = 0;
+      const rem16 = arr.length % 16;
+      if (op === 'mix'){
+        for (; i < arr.length - rem16; i += 16){
+          s += (BigInt(arr[i]) * 13n) ^ (BigInt(arr[i+1]) << 5n);
+          s += (BigInt(arr[i+2]) + 7n) ^ (BigInt(arr[i+3]) * 3n);
+          s += (BigInt(arr[i+4]) << 1n) + (BigInt(arr[i+5]) * 11n);
+          s ^= (BigInt(arr[i+6]) + BigInt(arr[i+7])) * 17n;
+          s += (BigInt(arr[i+8]) * 19n) ^ (BigInt(arr[i+9]) << 2n);
+          s ^= (BigInt(arr[i+10]) + 29n) * (BigInt(arr[i+11]) + 31n);
+          s += (BigInt(arr[i+12]) << 3n) ^ (BigInt(arr[i+13]) * 5n);
+          s ^= (BigInt(arr[i+14]) + BigInt(arr[i+15])) * 7n;
+        }
+        for (; i < arr.length; i++) s += (BigInt(arr[i]) * 13n) ^ (BigInt(arr[i]) << 5n);
+      } else {
+        for (; i < arr.length - rem16; i += 16){
+          s += BigInt(arr[i]) + BigInt(arr[i+1]) + BigInt(arr[i+2]) + BigInt(arr[i+3])
+             + BigInt(arr[i+4]) + BigInt(arr[i+5]) + BigInt(arr[i+6]) + BigInt(arr[i+7])
+             + BigInt(arr[i+8]) + BigInt(arr[i+9]) + BigInt(arr[i+10]) + BigInt(arr[i+11])
+             + BigInt(arr[i+12]) + BigInt(arr[i+13]) + BigInt(arr[i+14]) + BigInt(arr[i+15]);
+        }
+        for (; i < arr.length; i++) s += BigInt(arr[i]);
+      }
+      return s;
+    }
+
+    const t0 = performance.now();
+    for (let it = 0; it < iterations; it++){
+      if (stopFlag) break;
+      const arr = new TCtor(len);
+      fill(arr);
+      checksum ^= reduce(arr);
+    }
+    const t1 = performance.now();
+    return { type: TCtorName, len, bytes, iterationsRan: iterations, ms: (t1 - t0), checksum: checksum.toString() };
+  }
+
+  // === Worker blob ===
+  function makeWorkerBlob(){
+    const src = `(${stressTypedArrayTask.toString()}); onmessage = (e)=>{ const { type, bytes, iterations, pattern, op } = e.data; try { const r = stressTypedArrayTask(type, bytes, iterations, pattern, op); postMessage({ ok:true, r }); } catch(err){ postMessage({ ok:false, err: String(err) }); } };`;
+    return URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+  }
+
+  async function runSuite(){
+    stopFlag = false;
+    const sizeMB = Math.max(1, parseInt($('#sizeMB').value, 10) || 1);
+    const iterations = Math.max(1, parseInt($('#iterations').value, 10) || 1);
+    const useWorkers = $('#useWorkers').checked;
+    const workerCount = Math.max(1, parseInt($('#workerCount').value, 10) || 1);
+
+    const types = $$('.typeOpt').filter(x => x.checked).map(x => x.value);
+    if (!types.length){ log('Pilih minimal satu TypedArray.'); return; }
+
+    const bytes = sizeMB * 1024 * 1024;
+    const pattern = getPattern();
+    const op = getOp();
+
+    log('--- RUN START ---');
+    log('cfg:', JSON.stringify({ sizeMB, iterations, useWorkers, workerCount, types, pattern, op }));
+
+    const totalStart = performance.now();
+
+    if (useWorkers){
+      const url = makeWorkerBlob();
+      const jobs = [];
+      // Bagi iterations per worker per type (kue dibagi rata)
+      for (const type of types){
+        const itPerType = iterations;
+        const perWorker = Math.max(1, Math.floor(itPerType / workerCount));
+        const remainder = itPerType - perWorker * workerCount;
+        for (let w=0; w<workerCount; w++){
+          const it = w < remainder ? perWorker + 1 : perWorker;
+          jobs.push({ type, it });
+        }
+      }
+      const results = await Promise.all(jobs.map(job => new Promise(res => {
+        const worker = new Worker(url);
+        worker.onmessage = ev => { worker.terminate(); res(ev.data); };
+        worker.onerror = err => { worker.terminate(); res({ ok:false, err: String(err.message||err) }); };
+        worker.postMessage({ type: job.type, bytes, iterations: job.it, pattern, op });
+      })));
+      URL.revokeObjectURL(url);
+      let totalMs = 0; let agg = 0n; let ok=0, fail=0;
+      for (const m of results){
+        if (m && m.ok){
+          ok++; totalMs += m.r.ms; agg ^= BigInt(m.r.checksum);
+          log(`worker ✓ type=${m.r.type} len=${m.r.len} it=${m.r.iterationsRan} time=${m.r.ms.toFixed(1)}ms checksum=${m.r.checksum}`);
+        } else { fail++; log('worker ✗', m && m.err ? m.err : 'unknown error'); }
+      }
+      const totalEnd = performance.now();
+      log(`Workers selesai. ok=${ok} fail=${fail} wall=${(totalEnd-totalStart).toFixed(1)}ms sumCPU=${totalMs.toFixed(1)}ms agg=${agg.toString()}`);
+    } else {
+      // Single-thread run, per type sequential
+      let agg = 0n; let grandMs = 0;
+      for (const type of types){
+        if (stopFlag) break;
+        const r = stressTypedArrayTask(type, bytes, iterations, pattern, op);
+        agg ^= BigInt(r.checksum); grandMs += r.ms;
+        log(`main ✓ type=${r.type} len=${r.len} it=${r.iterationsRan} time=${r.ms.toFixed(1)}ms checksum=${r.checksum}`);
+      }
+      const totalEnd = performance.now();
+      log(`Selesai. wall=${(totalEnd-totalStart).toFixed(1)}ms sumCPU=${grandMs.toFixed(1)}ms agg=${agg.toString()}`);
+    }
+
+    log('--- RUN END ---');
+  }
+
+  $('#run').addEventListener('click', ()=>{
+    runSuite().catch(e=> log('ERR', e && e.stack || String(e)));
+  });
+  $('#stop').addEventListener('click', ()=>{ stopFlag = true; log('Stop diminta. Tunggu batch selesai...'); });
+  $('#clear').addEventListener('click', ()=>{ logEl.textContent=''; });
+
+  // Helper: set default worker count
+  const hc = (navigator.hardwareConcurrency|0) || 4;
+  $('#workerCount').value = Math.max(1, Math.min(32, hc));
+})();
+</script>
+</body>
+</html>
