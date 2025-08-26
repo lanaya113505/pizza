@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Massive Resource Pressure</title>
+</head>
+<body>
+<h3>Massive OffscreenCanvas Resource Pressure</h3>
+<div>
+  Workers: <span id="wc">0</span> | Errors: <span id="err">0</span> | Transfers: <span id="xfer">0</span>
+</div>
+<script>
+let errors=0, transfers=0;
+const workers=[];
+const NUM_WORKERS=128;   // coba naikin 256 kalau mesin kuat
+
+const workerCode = `
+onmessage = async (e) => {
+  const c = e.data.canvas;
+  if (!c) return;
+  try {
+    // bikin context besar
+    const ctx2d = c.getContext("2d");
+    ctx2d.fillStyle = "rgb("+(Math.random()*255|0)+","+(Math.random()*255|0)+","+(Math.random()*255|0)+")";
+    ctx2d.fillRect(0,0,c.width,c.height);
+
+    // getImageData + putImageData (super mahal)
+    try {
+      let img = ctx2d.getImageData(0,0,Math.min(512,c.width),Math.min(512,c.height));
+      ctx2d.putImageData(img, Math.random()*50, Math.random()*50);
+    } catch(e) {}
+
+    // convertToBlob (besar → makan memori)
+    try {
+      await c.convertToBlob({type:"image/png"});
+    } catch(e) {}
+
+    // webgl shader spam
+    try {
+      let gl = c.getContext("webgl");
+      if (gl) {
+        let fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs,"void main(){gl_FragColor=vec4("+Math.random()+","+Math.random()+","+Math.random()+",1.0);}");
+        gl.compileShader(fs);
+      }
+    } catch(e) {}
+
+    // transfer ke main
+    try {
+      const bm = c.transferToImageBitmap();
+      postMessage({bm}, [bm]);
+    } catch(e) {
+      postMessage({err:String(e)});
+    }
+  } catch(e) {
+    postMessage({err:String(e)});
+  }
+};
+`;
+
+const blob = new Blob([workerCode], {type:"application/javascript"});
+const url = URL.createObjectURL(blob);
+
+function startWorkers(){
+  for (let i=0;i<NUM_WORKERS;i++){
+    const w=new Worker(url);
+    workers.push(w);
+    w.onmessage=(ev)=>{
+      if (ev.data.bm){
+        transfers++;
+        document.getElementById("xfer").textContent=transfers;
+        ev.data.bm.close?.();
+        // bikin canvas baru super besar
+        const size = 2048 + Math.floor(Math.random()*2048);
+        const c=new OffscreenCanvas(size,size);
+        w.postMessage({canvas:c},[c]);
+      } else if (ev.data.err){
+        errors++;
+        document.getElementById("err").textContent=errors;
+      }
+    };
+    // kickstart
+    const initSize = 2048+Math.floor(Math.random()*2048);
+    const c=new OffscreenCanvas(initSize,initSize);
+    w.postMessage({canvas:c},[c]);
+  }
+  document.getElementById("wc").textContent=workers.length;
+}
+
+startWorkers();
+</script>
+</body>
+</html>
