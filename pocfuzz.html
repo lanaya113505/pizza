@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Fenced Frame / Protected Audience Fuzzer (Safe)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    #container { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    #log { height: 40vh; overflow:auto; border:1px solid #ccc; padding:8px; background:#fafafa; }
+    #arena { min-height: 320px; border:1px dashed #aaa; padding:8px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    button { padding:8px 12px; }
+  </style>
+</head>
+<body>
+  <h1>Fenced Frame / Protected Audience Fuzzer</h1>
+
+  <div class="row">
+    <button id="start">Start fuzz</button>
+    <button id="stop">Stop</button>
+    <label>Iterations:
+      <input id="iters" type="number" min="1" value="5000" />
+    </label>
+    <label>Parallel frames:
+      <input id="parallel" type="number" min="1" value="16" />
+    </label>
+    <label>Max size (px):
+      <input id="maxsize" type="number" min="50" value="1000" />
+    </label>
+  </div>
+
+  <p>Status: <span id="status">idle</span></p>
+
+  <div id="container">
+    <div>
+      <h3>Arena</h3>
+      <div id="arena"></div>
+    </div>
+    <div>
+      <h3>Log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const arena = document.getElementById('arena');
+  const startBtn = document.getElementById('start');
+  const stopBtn = document.getElementById('stop');
+  const itersEl = document.getElementById('iters');
+  const parEl = document.getElementById('parallel');
+  const maxSizeEl = document.getElementById('maxsize');
+
+  let stopFlag = false;
+  const haveAuction = !!(navigator && navigator.runAdAuction);
+  const haveFencedFrame = 'fencedframe' in document.createElement('div');
+
+  function log(...args){
+    const s = args.map(a => typeof a==='object' ? JSON.stringify(a) : String(a)).join(' ');
+    const line = document.createElement('div');
+    line.textContent = `[${new Date().toISOString()}] ${s}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(...args);
+  }
+
+  const pick = arr => arr[(Math.random()*arr.length)|0];
+  const randInt = (min, max) => (min + Math.floor(Math.random() * (max - min + 1)));
+  const maybe = p => Math.random() < p;
+
+  function randomAuctionConfig(){
+    const sellers = ['https://example.com','https://invalid.test',location.origin];
+    const buyers = ['https://example.com','https://invalid.test',location.origin];
+    const cfg = {
+      seller: pick(sellers),
+      decisionLogicUrl: pick(sellers) + '/decision-logic.js',
+      interestGroupBuyers: buyers.slice(0, randInt(1, buyers.length)),
+      auctionSignals: maybe(0.5) ? { k: randInt(0, 1000) } : null,
+      perBuyerSignals: maybe(0.5) ? { [pick(buyers)]: { a: randInt(0, 5) } } : null,
+      sellerSignals: maybe(0.5) ? { s: Math.random() } : null,
+      resolveToConfig: maybe(0.8),
+      sellerTimeout: randInt(10, 200),
+      perBuyerTimeouts: maybe(0.5) ? { [pick(buyers)]: randInt(5, 150) } : undefined,
+    };
+    if (maybe(0.2)) cfg.auctionSignals = { nested: { x: [1,2,3, { y: "z" }] } };
+    return cfg;
+  }
+
+  async function createOneFencedFrame(maxSize){
+    const ff = document.createElement('fencedframe');
+    ff.width = randInt(1, maxSize);
+    ff.height = randInt(1, maxSize);
+    if (maybe(0.3)) { ff.style.border = '0'; }
+    if (maybe(0.3)) { ff.style.willChange = 'transform'; }
+
+    if (haveAuction && maybe(0.5)) {
+      try {
+        const cfg = randomAuctionConfig();
+        const result = await navigator.runAdAuction(cfg);
+        if (result) {
+          ff.config = result;
+        } else if ('config' in ff) {
+          try { ff.config = new FencedFrameConfig('data:text/html,<p>no auction</p>'); } catch {}
+        }
+      } catch (e) { log('auction-error:', e && (e.message || e)); }
+    } else {
+      if ('config' in ff) {
+        try {
+          const html = encodeURIComponent(`<html><body><p>ff seed ${Math.random()}</p></body></html>`);
+          ff.config = new FencedFrameConfig(`data:text/html,${html}`);
+        } catch (e) { log('direct-config-error:', e && (e.message || e)); }
+      }
+    }
+
+    arena.appendChild(ff);
+
+    if (maybe(0.4)) ff.width = randInt(1, maxSize);
+    if (maybe(0.4)) ff.height = randInt(1, maxSize);
+    if (maybe(0.2)) ff.toggleAttribute('hidden', maybe(0.5));
+    if (maybe(0.2)) ff.style.transform = `translate(${randInt(-10,10)}px, ${randInt(-10,10)}px)`;
+
+    setTimeout(() => {
+      try {
+        if (ff.isConnected && maybe(0.8)) {
+          ff.remove();
+        } else if (arena.isConnected) {
+          arena.innerHTML = arena.innerHTML;
+        }
+      } catch (e) { log('teardown-error:', e && (e.message || e)); }
+    }, randInt(1, 60));
+
+    return { ff };
+  }
+
+  async function fuzzOnce(parallel, maxSize){
+    const tasks = [];
+    for (let i=0; i<parallel; i++) tasks.push(createOneFencedFrame(maxSize));
+    const res = await Promise.allSettled(tasks);
+    if (maybe(0.2)) {
+      arena.style.display = 'none';
+      void arena.offsetHeight;
+      arena.style.display = '';
+    }
+    return res;
+  }
+
+  async function runFuzz(){
+    stopFlag = false;
+    const iters = parseInt(itersEl.value, 10) || 1000;
+    const parallel = Math.max(1, parseInt(parEl.value, 10) || 1);
+    const maxSize = Math.max(50, parseInt(maxSizeEl.value, 10) || 600);
+
+    statusEl.textContent = `running (${iters} iters, ${parallel} parallel)`;
+    log('env:', { haveAuction, haveFencedFrame, ua: navigator.userAgent });
+
+    for (let i=0; i<iters && !stopFlag; i++){
+      try {
+        await fuzzOnce(parallel, maxSize);
+        if ((i % 50) === 0) log('progress', { iter: i });
+      } catch (e) { log('fuzz-iteration-error:', e && (e.message || e)); }
+      await new Promise(r => setTimeout(r, randInt(0, 5)));
+    }
+    statusEl.textContent = stopFlag ? 'stopped' : 'done';
+    log('done');
+  }
+
+  startBtn.onclick = runFuzz;
+  stopBtn.onclick = () => { stopFlag = true; };
+
+  window.addEventListener('error', e => log('window-error:', e.message || e));
+  window.addEventListener('unhandledrejection', e => log('unhandled-rejection:', (e.reason && e.reason.message) || e.reason));
+
+  // Auto-stop & close/blank setelah 60 detik
+  setTimeout(() => {
+    stopFlag = true;
+    log('Auto-stop after 60s');
+    try { window.close(); } catch {}
+    try { location.replace("about:blank"); } catch {}
+  }, 60000);
+
+})();
+</script>
+</body>
+</html>
