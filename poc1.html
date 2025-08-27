@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Fenced Frame / Protected Audience Fuzzer (Safe)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    #container { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    #log { height: 40vh; overflow:auto; border:1px solid #ccc; padding:8px; background:#fafafa; }
+    #arena { min-height: 320px; border:1px dashed #aaa; padding:8px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    button { padding:8px 12px; }
+  </style>
+</head>
+<body>
+  <h1>Fenced Frame / Protected Audience Fuzzer</h1>
+
+  <div class="row">
+    <button id="start">Start fuzz</button>
+    <button id="stop">Stop</button>
+    <label>Iterations:
+      <input id="iters" type="number" min="1" value="2000" />
+    </label>
+    <label>Parallel frames:
+      <input id="parallel" type="number" min="1" value="4" />
+    </label>
+    <label>Max size (px):
+      <input id="maxsize" type="number" min="50" value="600" />
+    </label>
+  </div>
+
+  <p>Status: <span id="status">idle</span></p>
+
+  <div id="container">
+    <div>
+      <h3>Arena</h3>
+      <div id="arena"></div>
+    </div>
+    <div>
+      <h3>Log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const arena = document.getElementById('arena');
+  const startBtn = document.getElementById('start');
+  const stopBtn = document.getElementById('stop');
+  const itersEl = document.getElementById('iters');
+  const parEl = document.getElementById('parallel');
+  const maxSizeEl = document.getElementById('maxsize');
+
+  let stopFlag = false;
+  const haveAuction = !!(navigator && navigator.runAdAuction);
+  const haveFencedFrame = 'fencedframe' in document.createElement('div');
+
+  function log(...args){
+    const s = args.map(a => typeof a==='object' ? JSON.stringify(a) : String(a)).join(' ');
+    const line = document.createElement('div');
+    line.textContent = `[${new Date().toISOString()}] ${s}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(...args);
+  }
+
+  // Random helpers
+  const pick = arr => arr[(Math.random()*arr.length)|0];
+  const randInt = (min, max) => (min + Math.floor(Math.random() * (max - min + 1)));
+  const maybe = p => Math.random() < p;
+
+  // Minimal mutation of auction config (when available)
+  function randomAuctionConfig(){
+    // NOTE: these URLs need to be real for a successful auction; for fuzzing, we accept failures.
+    const sellers = [
+      'https://example.com',
+      'https://invalid.test',
+      location.origin, // if you want to host mock seller/buyer locally
+    ];
+    const buyers = [
+      'https://example.com',
+      'https://invalid.test',
+      location.origin,
+    ];
+    // Minimal shape; Chromium will validate and often reject—itu tidak apa untuk fuzzing error paths.
+    const cfg = {
+      seller: pick(sellers),
+      decisionLogicUrl: pick(sellers) + '/decision-logic.js',
+      interestGroupBuyers: buyers.slice(0, randInt(1, buyers.length)),
+      // randomized auctionSignals / perBuyerSignals shapes
+      auctionSignals: maybe(0.5) ? { k: randInt(0, 1000) } : null,
+      perBuyerSignals: maybe(0.5) ? { [pick(buyers)]: { a: randInt(0, 5) } } : null,
+      sellerSignals: maybe(0.5) ? { s: Math.random() } : null,
+      resolveToConfig: maybe(0.8), // often true
+      sellerTimeout: randInt(10, 200),   // small timeouts stress async teardown
+      perBuyerTimeouts: maybe(0.5) ? { [pick(buyers)]: randInt(5, 150) } : undefined,
+    };
+    // random weird nesting (benign)
+    if (maybe(0.2)) cfg.auctionSignals = { nested: { x: [1,2,3, { y: "z" }] } };
+    return cfg;
+  }
+
+  // Create one fenced frame, optionally from auction result
+  async function createOneFencedFrame(maxSize){
+    const ff = document.createElement('fencedframe');
+    // size mutations
+    ff.width = randInt(1, maxSize);
+    ff.height = randInt(1, maxSize);
+    if (maybe(0.3)) { ff.style.border = '0'; }
+    if (maybe(0.3)) { ff.style.willChange = 'transform'; }
+
+    // 50/50: try auction vs direct config (if supported)
+    let usedAuction = false;
+    if (haveAuction && maybe(0.5)) {
+      try {
+        usedAuction = true;
+        const cfg = randomAuctionConfig();
+        const result = await navigator.runAdAuction(cfg);
+        // result could be null or FencedFrameConfig; both fine
+        if (result) {
+          ff.config = result; // safe path: browser validates internally
+        } else {
+          // fallback to direct navigation (if allowed in current build)
+          if ('config' in ff) {
+            // Some builds may allow new FencedFrameConfig(url); others won’t.
+            try {
+              // benign data URL keeps it self-contained
+              ff.config = new FencedFrameConfig('data:text/html,<p>no auction</p>');
+            } catch {}
+          }
+        }
+      } catch (e) {
+        log('auction-error:', e && (e.message || e));
+      }
+    } else {
+      // No auction: try setting a direct config
+      if ('config' in ff) {
+        try {
+          const html = encodeURIComponent(`<html><body><p>ff seed ${Math.random()}</p></body></html>`);
+          ff.config = new FencedFrameConfig(`data:text/html,${html}`);
+        } catch (e) {
+          // If this path is blocked, we still keep the element to fuzz lifecycle/layout.
+          log('direct-config-error:', e && (e.message || e));
+        }
+      }
+    }
+
+    arena.appendChild(ff);
+
+    // Random DOM mutations post-append
+    if (maybe(0.4)) ff.width = randInt(1, maxSize);
+    if (maybe(0.4)) ff.height = randInt(1, maxSize);
+    if (maybe(0.2)) ff.toggleAttribute('hidden', maybe(0.5));
+    if (maybe(0.2)) ff.style.transform = `translate(${randInt(-10,10)}px, ${randInt(-10,10)}px)`;
+
+    // Random teardown timing (simulate races)
+    const life = randInt(1, 60); // ms
+    setTimeout(() => {
+      try {
+        if (ff.isConnected && maybe(0.8)) {
+          ff.remove();
+        } else {
+          // Sometimes detach parent instead
+          if (arena.isConnected) arena.innerHTML = arena.innerHTML; // cheap reflow
+        }
+      } catch (e) {
+        log('teardown-error:', e && (e.message || e));
+      }
+    }, life);
+
+    return { ff, usedAuction };
+  }
+
+  async function fuzzOnce(parallel, maxSize){
+    // Spawn N frames nearly simultaneously
+    const tasks = [];
+    for (let i=0; i<parallel; i++){
+      tasks.push(createOneFencedFrame(maxSize));
+    }
+    const res = await Promise.allSettled(tasks);
+    // Occasionally churn the container to stress layout/teardown
+    if (maybe(0.2)) {
+      arena.style.display = 'none';
+      // force reflow
+      void arena.offsetHeight;
+      arena.style.display = '';
+    }
+    return res;
+  }
+
+  async function runFuzz(){
+    stopFlag = false;
+    const iters = parseInt(itersEl.value, 10) || 1000;
+    const parallel = Math.max(1, parseInt(parEl.value, 10) || 1);
+    const maxSize = Math.max(50, parseInt(maxSizeEl.value, 10) || 600);
+
+    statusEl.textContent = `running (${iters} iters, ${parallel} parallel)`;
+    log('env:',
+      { haveAuction, haveFencedFrame, ua: navigator.userAgent });
+
+    for (let i=0; i<iters && !stopFlag; i++){
+      try {
+        await fuzzOnce(parallel, maxSize);
+        if ((i % 50) === 0) log('progress', { iter: i });
+      } catch (e) {
+        log('fuzz-iteration-error:', e && (e.message || e));
+      }
+      // small jitter
+      await new Promise(r => setTimeout(r, randInt(0, 5)));
+    }
+    statusEl.textContent = stopFlag ? 'stopped' : 'done';
+    log('done');
+  }
+
+  startBtn.onclick = runFuzz;
+  stopBtn.onclick = () => { stopFlag = true; };
+
+  // Global error logging (helpful untuk crash/exception tracing)
+  window.addEventListener('error', e => log('window-error:', e.message || e));
+  window.addEventListener('unhandledrejection', e => log('unhandled-rejection:', (e.reason && e.reason.message) || e.reason));
+})();
+</script>
+</body>
+</html>
