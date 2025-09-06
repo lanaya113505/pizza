@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Upload → window.webkitRequestFileSystem (PERSISTENT)</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; background:#f6f8fa; color:#111; padding:20px; }
+    .card{ background:#fff; border-radius:8px; padding:18px; box-shadow:0 6px 20px rgba(0,0,0,0.06); max-width:900px; margin:0 auto; }
+    h1{ margin:0 0 8px; font-size:18px; }
+    label{ display:block; margin:10px 0 6px; font-weight:600; }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input[type="file"]{ padding:6px 0; }
+    input[type="number"], input[type="text"]{ padding:6px 8px; border-radius:6px; border:1px solid #d0d7de; }
+    button{ padding:8px 12px; border-radius:8px; border:1px solid #2b7cff; background:#2b7cff; color:#fff; cursor:pointer; }
+    button.secondary{ background:#f0f3f8; color:#111; border-color:#cfe0ff; }
+    pre{ background:#0b1220; color:#e6edf3; padding:12px; border-radius:6px; overflow:auto; max-height:220px; }
+    ul.files{ list-style:none; padding-left:0; margin:8px 0 0; }
+    ul.files li{ padding:8px 10px; border:1px solid #eef2f6; border-radius:6px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .muted{ color:#586069; font-size:13px; }
+    a.link{ color:#0b63ff; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Upload file → Simpan di window.webkitRequestFileSystem (PERSISTENT)</h1>
+    <p class="muted">Pilih file, minta akses storage PERSISTENT, lalu simpan ke filesystem. (API ini tidak tersedia di semua browser.)</p>
+
+    <label>Ukuran storage yang diminta (bytes)</label>
+    <div class="row">
+      <input id="storageSize" type="number" value="1048576" min="1024" step="1024" />
+      <button id="requestFs">Minta akses storage</button>
+      <button id="listFiles" class="secondary">List file di root</button>
+    </div>
+
+    <hr style="margin:14px 0">
+
+    <label>Pilih file untuk di-upload</label>
+    <div class="row">
+      <input id="fileInput" type="file" />
+      <input id="targetName" type="text" placeholder="Nama file di filesystem (opsional)" />
+      <button id="saveBtn">Simpan ke filesystem</button>
+      <button id="clearLog" class="secondary">Clear Log</button>
+    </div>
+
+    <h3 style="margin-top:16px">Status / Log</h3>
+    <pre id="log">Ready.</pre>
+
+    <h3 style="margin-top:12px">Files (root)</h3>
+    <ul id="fileList" class="files"></ul>
+
+    <p class="muted" style="margin-top:12px">Catatan: jika browser tidak mendukung, kamu akan melihat pesan error. Beberapa browser hanya mengizinkan FileSystem API pada context khusus (contoh: extension, atau flag eksperimen).</p>
+  </div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const logEl = $('log');
+  let fsInstance = null;
+
+  function log(...args){
+    const msg = args.join(' ');
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent += `\n[${t}] ${msg}`;
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(...args);
+  }
+
+  function clearLog(){ logEl.textContent = 'Ready.'; }
+
+  // Helper: feature detect
+  function supportsWebkitFS(){
+    return !!(window.webkitRequestFileSystem || window.requestFileSystem);
+  }
+
+  // Request persistent storage and get filesystem
+  function requestPersistentFS(sizeBytes){
+    return new Promise((resolve, reject) => {
+      const req = navigator.webkitPersistentStorage || navigator.storage && navigator.storage.persisted ? navigator.webkitPersistentStorage : null;
+      // In many Chromium builds, quota must be requested via navigator.webkitPersistentStorage.requestQuota — but webkitRequestFileSystem can be called directly.
+      if (!supportsWebkitFS()){
+        reject(new Error('FileSystem API (webkitRequestFileSystem) tidak tersedia di browser ini.'));
+        return;
+      }
+
+      const requestQuota = (quota, callback) => {
+        if (navigator.webkitPersistentStorage && navigator.webkitPersistentStorage.requestQuota) {
+          navigator.webkitPersistentStorage.requestQuota(quota, callback, err => {
+            // some builds use deprecated API or no-op; fallback to resolve with quota anyway
+            console.warn('requestQuota error', err);
+            callback(quota);
+          });
+        } else {
+          // fallback: just call callback
+          callback(quota);
+        }
+      };
+
+      requestQuota(sizeBytes, function(grantedBytes){
+        const webkitReq = window.webkitRequestFileSystem || window.requestFileSystem;
+        try {
+          webkitReq.call(window, window.PERSISTENT, grantedBytes, function(fs){
+            fsInstance = fs;
+            log('Filesystem persistent siap. root:', fs.root);
+            resolve(fs);
+          }, function(err){
+            reject(err || new Error('Gagal membuka filesystem'));
+          });
+        } catch (ex) {
+          reject(ex);
+        }
+      });
+    });
+  }
+
+  // Save a Blob/File into filesystem under given name
+  function saveBlobToFS(fileName, blob){
+    return new Promise((resolve, reject) => {
+      if (!fsInstance){
+        reject(new Error('Filesystem belum diinisialisasi. Tekan "Minta akses storage" dulu.'));
+        return;
+      }
+      // create or overwrite file
+      fsInstance.root.getFile(fileName, { create: true, exclusive: false }, function(fileEntry){
+        log('Membuat/menemukan fileEntry untuk', fileName);
+        fileEntry.createWriter(function(fileWriter){
+          fileWriter.onwriteend = function(){
+            log('Selesai menulis file:', fileName);
+            // Try to form a URL to access the file (may be browser-dependent)
+            try {
+              const url = fileEntry.toURL ? fileEntry.toURL() : null;
+              resolve({ fileEntry, url });
+            } catch(e){
+              resolve({ fileEntry, url: null });
+            }
+          };
+          fileWriter.onerror = function(e){
+            reject(e || new Error('Gagal menulis file'));
+          };
+          // write the blob (overwrite)
+          try {
+            fileWriter.truncate(0); // ensure overwrite
+            // truncation is async; wait for truncate to finish before writing
+            fileWriter.onwriteend = function() {
+              // now write new blob
+              fileWriter.onwriteend = function() {
+                log('Write end (final) for', fileName);
+                try {
+                  const url = fileEntry.toURL ? fileEntry.toURL() : null;
+                  resolve({ fileEntry, url });
+                } catch(e){
+                  resolve({ fileEntry, url: null });
+                }
+              };
+              fileWriter.onerror = function(e){ reject(e || new Error('Gagal menulis saat write')); };
+              fileWriter.write(blob);
+            };
+          } catch (ex) {
+            // Some implementations don't like double onwriteend manipulation; fallback to single write
+            fileWriter.write(blob);
+          }
+        }, function(err){
+          reject(err || new Error('Gagal createWriter'));
+        });
+      }, function(err){
+        reject(err || new Error('Gagal getFile'));
+      });
+    });
+  }
+
+  // List files in root (using DirectoryReader)
+  function listRootFiles(){
+    return new Promise((resolve, reject) => {
+      if (!fsInstance) return reject(new Error('Filesystem belum diinisialisasi.'));
+      const reader = fsInstance.root.createReader();
+      const entries = [];
+      function readBatch(){
+        reader.readEntries(function(results){
+          if (!results.length){
+            resolve(entries);
+          } else {
+            entries.push(...results);
+            readBatch();
+          }
+        }, function(err){
+          reject(err);
+        });
+      }
+      readBatch();
+    });
+  }
+
+  // UI wiring
+  $('requestFs').addEventListener('click', async ()=>{
+    const size = Math.max(1024, parseInt($('storageSize').value, 10) || 1048576);
+    clearLog(); log('Meminta akses storage PERSISTENT, bytes=', size);
+    try {
+      await requestPersistentFS(size);
+      log('Akses storage persistent granted.');
+    } catch (err) {
+      log('Gagal akses filesystem:', err && err.message ? err.message : String(err));
+      alert('Gagal akses filesystem: ' + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  $('saveBtn').addEventListener('click', async ()=>{
+    const f = $('fileInput').files[0];
+    if (!f){ alert('Pilih file dulu.'); return; }
+    const targetNameInput = $('targetName').value.trim();
+    const name = targetNameInput || f.name;
+    log('Menyiapkan menyimpan file:', f.name, '→', name);
+    try {
+      const result = await saveBlobToFS(name, f);
+      log('File tersimpan:', name, 'entry:', result.fileEntry);
+      if (result.url) log('File dapat diakses via:', result.url);
+      // refresh file list
+      await refreshFileList();
+    } catch (err) {
+      log('Gagal menyimpan file:', err && err.message ? err.message : String(err));
+      alert('Gagal menyimpan file: ' + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  $('listFiles').addEventListener('click', async ()=>{
+    await refreshFileList();
+  });
+
+  $('clearLog').addEventListener('click', ()=> clearLog());
+
+  async function refreshFileList(){
+    const container = $('fileList');
+    container.innerHTML = '';
+    if (!fsInstance){ container.innerHTML = '<li class="muted">Filesystem belum diinisialisasi</li>'; return; }
+    try {
+      const entries = await listRootFiles();
+      if (!entries.length){ container.innerHTML = '<li class="muted">(kosong)</li>'; return; }
+      for (const e of entries){
+        const li = document.createElement('li');
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = e.name;
+        const btns = document.createElement('span');
+
+        const openA = document.createElement('a');
+        openA.href = '#';
+        openA.className = 'link';
+        openA.textContent = 'Buka / download';
+        openA.addEventListener('click', async (ev)=>{
+          ev.preventDefault();
+          // Try to get URL via toURL()
+          try {
+            const url = e.toURL ? e.toURL() : null;
+            if (url){
+              window.open(url, '_blank');
+              log('Membuka', url);
+              return;
+            }
+          } catch(_) {}
+          // fallback read file and create object URL
+          e.file(function(fileBlob){
+            const objUrl = URL.createObjectURL(fileBlob);
+            window.open(objUrl, '_blank');
+            // optionally revoke after some time
+            setTimeout(()=> URL.revokeObjectURL(objUrl), 60*1000);
+            log('Opened file via objectURL for', e.name);
+          }, function(err){
+            log('Gagal baca file untuk buka:', e.name, err);
+            alert('Gagal baca file: ' + (err && err.message ? err.message : String(err)));
+          });
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Hapus';
+        delBtn.className = 'secondary';
+        delBtn.addEventListener('click', (ev)=>{
+          ev.preventDefault();
+          e.remove(function(){
+            log('File dihapus:', e.name);
+            refreshFileList();
+          }, function(err){
+            log('Gagal hapus file:', e.name, err);
+            alert('Gagal hapus file: ' + (err && err.message ? err.message : String(err)));
+          });
+        });
+
+        btns.appendChild(openA);
+        btns.appendChild(document.createTextNode(' '));
+        btns.appendChild(delBtn);
+
+        li.appendChild(nameSpan);
+        li.appendChild(btns);
+        container.appendChild(li);
+      }
+    } catch (err){
+      log('Gagal list file:', err && err.message ? err.message : String(err));
+      container.innerHTML = '<li class="muted">Gagal membaca isi direktori: ' + (err && err.message ? err.message : String(err)) + '</li>';
+    }
+  }
+
+  // Initial feature warning
+  if (!supportsWebkitFS()){
+    log('Peringatan: Browser ini mungkin tidak mendukung window.webkitRequestFileSystem. Coba gunakan Chrome/Chromium versi lama atau environment yang mengizinkan API ini.');
+  } else {
+    log('Browser mendukung webkitRequestFileSystem (atau requestFileSystem). Anda dapat meminta akses storage.');
+  }
+
+})();
+</script>
+</body>
+</html>
