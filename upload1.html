@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Storage Dumper</title>
+</head>
+<body>
+  <h2>Storage Dumper</h2>
+  <button id="dump">Dump & Upload Storage</button>
+
+  <script>
+    document.getElementById("dump").addEventListener("click", function () {
+      // Minta quota 5MB
+      window.webkitRequestFileSystem(window.TEMPORARY, 5 * 1024 * 1024, function(fs) {
+        fs.root.getFile("storageDump.json", { create: true }, function(fileEntry) {
+          fileEntry.createWriter(function(fileWriter) {
+            // Buat dump JSON
+            const dump = {
+              localStorage: Object.fromEntries(Object.entries(localStorage)),
+              sessionStorage: Object.fromEntries(Object.entries(sessionStorage))
+            };
+
+            const jsonStr = JSON.stringify(dump, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+
+            fileWriter.onwriteend = function() {
+              console.log("✅ Storage JSON saved locally:", fileEntry.toURL());
+
+              // Baca kembali file untuk di-upload
+              fileEntry.file(function(file) {
+                const reader = new FileReader();
+                reader.onload = function() {
+                  console.log("📂 File content:", this.result);
+
+                  // Kirim ke server
+                  fetch("https://your-server.com/upload", { // ganti dengan endpoint server kamu
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json"
+                    },
+                    body: this.result
+                  })
+                  .then(res => res.text())
+                  .then(resp => {
+                    console.log("✅ Upload success:", resp);
+                    alert("Upload sukses! Respon server:\n" + resp);
+                  })
+                  .catch(err => {
+                    console.error("❌ Upload failed:", err);
+                    alert("Upload gagal. Cek console.");
+                  });
+                };
+                reader.readAsText(file);
+              });
+            };
+
+            fileWriter.onerror = function(err) {
+              console.error("❌ Error writing file:", err);
+              alert("Gagal menyimpan file. Cek console.");
+            };
+
+            fileWriter.write(blob);
+          });
+        });
+      });
+    });
+  </script>
+</body>
+</html>
