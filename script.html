@@ -1,88 +1,94 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>POC — Manual Repro Instructions</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px;line-height:1.5}
-    pre#log{background:#111;color:#0f0;padding:12px;border-radius:6px;height:280px;overflow:auto}
-    .warning{color:#b00;font-weight:600}
-    .hint{background:#eef;padding:8px;border-radius:6px;margin:8px 0}
-    button{padding:8px 12px;margin-top:8px}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visual Overscroll POC</title>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #222;
+    font-family: sans-serif;
+    user-select: none;
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  #content {
+    width: 300px;
+    height: 200px;
+    background: linear-gradient(90deg,#ff5555,#55ff55);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    border-radius: 12px;
+    transition: transform 0.3s cubic-bezier(0.33,1,0.68,1);
+  }
+</style>
 </head>
 <body>
-  <h1>POC — Manual reproduction helper (safe)</h1>
 
-  <p class="warning">Important: This page <strong>does not</strong> trigger any internal browser functions. Follow the manual steps below while running an instrumented Chromium build (ASan) to capture the real crash/logs.</p>
+<div id="content">Swipe me!</div>
 
-  <h2>Goal</h2>
-  <p>Reproduce the sequence: <strong>create overscroll controller → navigate to attacker page → perform gesture (swipe right) in Device Toolbar → refresh</strong>. When reproduced in an ASan/instrumented Chromium build, the native stacktrace and crash will be recorded by ASan — use those logs for your VRP report.</p>
+<script>
+const content = document.getElementById("content");
 
-  <h2>Steps (exact)</h2>
-  <ol>
-    <li>Run an instrumented Chromium build (ASan) or debug build you want to test. Launch with the same flags you used when capturing ASan output (include any experimental flags you used).</li>
-    <li>Open DevTools (F12) and enable <strong>Toggle Device Toolbar</strong> (Ctrl+Shift+M) to emulate mobile device.</li>
-    <li>In Device Toolbar, enable <strong>Emulate touch</strong> (icon should indicate touch is active).</li>
-    <li>Visit this page via your hosted redirect URL (e.g. <code>https://lanaya113505.github.io/pizza/redirect.html</code>) so it will redirect here into the same tab.</li>
-    <li>After redirect completes, <strong>perform a swipe from left to right</strong> on the emulated viewport (drag with mouse or use touch if available) to emulate the overscroll gesture (the action that in Chromium triggers navigation/overscroll handling).</li>
-    <li>Immediately after performing the swipe, press the browser Refresh (F5) once. If the ASan instrumented build is vulnerable, this is the moment the crash/stacktrace will appear in your ASan console.</li>
-    <li>Collect ASan output, browser console logs, and a full repro description (command line, flags, exact Chromium commit/build id) for the bug report.</li>
-  </ol>
+let startX = 0;
+let currentX = 0;
+let isDragging = false;
 
-  <div class="hint">
-    Quick checklist before reproducing:
-    <ul>
-      <li>Chromium build: ASan or debug build</li>
-      <li>Command line flags (copy them into your report)</li>
-      <li>DevTools: Device Toolbar ON + Emulate touch</li>
-      <li>Navigate via your <code>redirect.html</code> URL (same tab)</li>
-    </ul>
-  </div>
+function resetOverscroll() {
+  content.style.transform = "translateX(0px)";
+  console.log("Visual Overscroll Reset!");
+}
 
-  <h3>Record / Log</h3>
-  <p>Use the button below to append a local log entry (this only records client timestamps and navigation info — it does NOT interact with native code). Attach this client log with your ASan output in the report so maintainers can map timings.</p>
-  <button id="logNow">Append local log entry</button>
-  <button id="clearLog">Clear local log</button>
-  <pre id="log">Client log:\n</pre>
+// --- Touch Events ---
+content.addEventListener("touchstart", e => {
+  startX = e.touches[0].clientX;
+  isDragging = true;
+  content.style.transition = "none";
+});
 
-  <script>
-    const logEl = document.getElementById('log');
-    function clog(msg){
-      const ts = new Date().toISOString();
-      logEl.textContent += `[${ts}] ${msg}\n`;
-      console.log(msg);
-    }
+content.addEventListener("touchmove", e => {
+  if (!isDragging) return;
+  currentX = e.touches[0].clientX;
+  const delta = currentX - startX;
+  // limit overscroll for visual effect
+  content.style.transform = `translateX(${delta * 0.5}px)`;
+});
 
-    // Indicate navigation type (reload detection)
-    function navType() {
-      try {
-        const entries = performance.getEntriesByType('navigation');
-        if (entries && entries.length) return entries[0].type;
-        return performance.navigation && performance.navigation.type === performance.navigation.TYPE_RELOAD ? 'reload' : 'navigate';
-      } catch(e){ return 'unknown'; }
-    }
+content.addEventListener("touchend", e => {
+  isDragging = false;
+  content.style.transition = "transform 0.3s cubic-bezier(0.33,1,0.68,1)";
+  resetOverscroll();
+});
 
-    document.getElementById('logNow').addEventListener('click', () => {
-      clog('Manual log entry — navType=' + navType() + ', url=' + location.href);
-      // store for later export
-      localStorage.setItem('poc_client_log', logEl.textContent);
-      alert('Local log appended. Copy ASan output + this client log into your bug report.');
-    });
+// --- Mouse Events for Desktop ---
+content.addEventListener("mousedown", e => {
+  startX = e.clientX;
+  isDragging = true;
+  content.style.transition = "none";
+});
 
-    document.getElementById('clearLog').addEventListener('click', () => {
-      localStorage.removeItem('poc_client_log');
-      logEl.textContent = 'Client log:\\n';
-      clog('Client log cleared by user');
-    });
+document.addEventListener("mousemove", e => {
+  if (!isDragging) return;
+  currentX = e.clientX;
+  const delta = currentX - startX;
+  content.style.transform = `translateX(${delta * 0.5}px)`;
+});
 
-    // on load, restore persisted client log if present
-    const persisted = localStorage.getItem('poc_client_log');
-    if (persisted) logEl.textContent = persisted;
+document.addEventListener("mouseup", e => {
+  if (!isDragging) return;
+  isDragging = false;
+  content.style.transition = "transform 0.3s cubic-bezier(0.33,1,0.68,1)";
+  resetOverscroll();
+});
+</script>
 
-    // auto-log initial arrival
-    clog('POC loaded; navType=' + navType() + '; userAgent=' + navigator.userAgent);
-  </script>
 </body>
 </html>
