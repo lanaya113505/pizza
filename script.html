@@ -1,38 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-    <title>Halaman POC</title>
+  <meta charset="utf-8">
+  <title>POC — Manual Repro Instructions</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px;line-height:1.5}
+    pre#log{background:#111;color:#0f0;padding:12px;border-radius:6px;height:280px;overflow:auto}
+    .warning{color:#b00;font-weight:600}
+    .hint{background:#eef;padding:8px;border-radius:6px;margin:8px 0}
+    button{padding:8px 12px;margin-top:8px}
+  </style>
 </head>
-<body style="margin: 0;">
+<body>
+  <h1>POC — Manual reproduction helper (safe)</h1>
 
-<script>
-    // Hanya refresh jika ini bukan yang pertama kali dimuat
-    if (sessionStorage.getItem('shouldRefresh') === 'true') {
-        // Set posisi scroll ke atas (0, 0)
-        window.scrollTo(0, 0); 
-        
-        // Hapus penanda agar refresh tidak berulang
-        sessionStorage.removeItem('shouldRefresh');
+  <p class="warning">Important: This page <strong>does not</strong> trigger any internal browser functions. Follow the manual steps below while running an instrumented Chromium build (ASan) to capture the real crash/logs.</p>
 
-        // Optional: Tampilkan indikator bahwa script Overscroll telah dieksekusi (simulasi)
-        document.body.innerHTML = '<h1>Refresh Selesai. Overscroll Reset (Simulasi)</h1><p>Lihat Console DevTools untuk log internal browser.</p>';
-        console.log("Simulasi OverscrollController::Reset");
+  <h2>Goal</h2>
+  <p>Reproduce the sequence: <strong>create overscroll controller → navigate to attacker page → perform gesture (swipe right) in Device Toolbar → refresh</strong>. When reproduced in an ASan/instrumented Chromium build, the native stacktrace and crash will be recorded by ASan — use those logs for your VRP report.</p>
 
-    } else {
-        // Set penanda dan refresh halaman agar browser "melihat" inisialisasi baru
-        sessionStorage.setItem('shouldRefresh', 'true');
-        // Gunakan window.location.replace untuk menghindari history berulang
-        // Namun, jika ingin melihat efek refresh, gunakan reload:
-        window.location.reload(); 
+  <h2>Steps (exact)</h2>
+  <ol>
+    <li>Run an instrumented Chromium build (ASan) or debug build you want to test. Launch with the same flags you used when capturing ASan output (include any experimental flags you used).</li>
+    <li>Open DevTools (F12) and enable <strong>Toggle Device Toolbar</strong> (Ctrl+Shift+M) to emulate mobile device.</li>
+    <li>In Device Toolbar, enable <strong>Emulate touch</strong> (icon should indicate touch is active).</li>
+    <li>Visit this page via your hosted redirect URL (e.g. <code>https://lanaya113505.github.io/pizza/redirect.html</code>) so it will redirect here into the same tab.</li>
+    <li>After redirect completes, <strong>perform a swipe from left to right</strong> on the emulated viewport (drag with mouse or use touch if available) to emulate the overscroll gesture (the action that in Chromium triggers navigation/overscroll handling).</li>
+    <li>Immediately after performing the swipe, press the browser Refresh (F5) once. If the ASan instrumented build is vulnerable, this is the moment the crash/stacktrace will appear in your ASan console.</li>
+    <li>Collect ASan output, browser console logs, and a full repro description (command line, flags, exact Chromium commit/build id) for the bug report.</li>
+  </ol>
+
+  <div class="hint">
+    Quick checklist before reproducing:
+    <ul>
+      <li>Chromium build: ASan or debug build</li>
+      <li>Command line flags (copy them into your report)</li>
+      <li>DevTools: Device Toolbar ON + Emulate touch</li>
+      <li>Navigate via your <code>redirect.html</code> URL (same tab)</li>
+    </ul>
+  </div>
+
+  <h3>Record / Log</h3>
+  <p>Use the button below to append a local log entry (this only records client timestamps and navigation info — it does NOT interact with native code). Attach this client log with your ASan output in the report so maintainers can map timings.</p>
+  <button id="logNow">Append local log entry</button>
+  <button id="clearLog">Clear local log</button>
+  <pre id="log">Client log:\n</pre>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function clog(msg){
+      const ts = new Date().toISOString();
+      logEl.textContent += `[${ts}] ${msg}\n`;
+      console.log(msg);
     }
-</script>
 
-<h1>Halaman POC</h1>
-<p>Ini adalah halaman tujuan. Konten yang lebih lebar/panjang mungkin diperlukan untuk memicu overscroll.</p>
+    // Indicate navigation type (reload detection)
+    function navType() {
+      try {
+        const entries = performance.getEntriesByType('navigation');
+        if (entries && entries.length) return entries[0].type;
+        return performance.navigation && performance.navigation.type === performance.navigation.TYPE_RELOAD ? 'reload' : 'navigate';
+      } catch(e){ return 'unknown'; }
+    }
 
-<div style="width: 200vw; height: 100vh; background-color: #f0f0f0;">
-    Konten Lebar (200% Viewport Width)
-</div>
+    document.getElementById('logNow').addEventListener('click', () => {
+      clog('Manual log entry — navType=' + navType() + ', url=' + location.href);
+      // store for later export
+      localStorage.setItem('poc_client_log', logEl.textContent);
+      alert('Local log appended. Copy ASan output + this client log into your bug report.');
+    });
 
+    document.getElementById('clearLog').addEventListener('click', () => {
+      localStorage.removeItem('poc_client_log');
+      logEl.textContent = 'Client log:\\n';
+      clog('Client log cleared by user');
+    });
+
+    // on load, restore persisted client log if present
+    const persisted = localStorage.getItem('poc_client_log');
+    if (persisted) logEl.textContent = persisted;
+
+    // auto-log initial arrival
+    clog('POC loaded; navType=' + navType() + '; userAgent=' + navigator.userAgent);
+  </script>
 </body>
 </html>
