@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Halaman POC</title>
+</head>
+<body style="margin: 0;">
+
+<script>
+    // Hanya refresh jika ini bukan yang pertama kali dimuat
+    if (sessionStorage.getItem('shouldRefresh') === 'true') {
+        // Set posisi scroll ke atas (0, 0)
+        window.scrollTo(0, 0); 
+        
+        // Hapus penanda agar refresh tidak berulang
+        sessionStorage.removeItem('shouldRefresh');
+
+        // Optional: Tampilkan indikator bahwa script Overscroll telah dieksekusi (simulasi)
+        document.body.innerHTML = '<h1>Refresh Selesai. Overscroll Reset (Simulasi)</h1><p>Lihat Console DevTools untuk log internal browser.</p>';
+        console.log("Simulasi OverscrollController::Reset");
+
+    } else {
+        // Set penanda dan refresh halaman agar browser "melihat" inisialisasi baru
+        sessionStorage.setItem('shouldRefresh', 'true');
+        // Gunakan window.location.replace untuk menghindari history berulang
+        // Namun, jika ingin melihat efek refresh, gunakan reload:
+        window.location.reload(); 
+    }
+</script>
+
+<h1>Halaman POC</h1>
+<p>Ini adalah halaman tujuan. Konten yang lebih lebar/panjang mungkin diperlukan untuk memicu overscroll.</p>
+
+<div style="width: 200vw; height: 100vh; background-color: #f0f0f0;">
+    Konten Lebar (200% Viewport Width)
+</div>
+
+</body>
+</html>
