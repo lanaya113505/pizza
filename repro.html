@@ -10,7 +10,7 @@
 
   <script>
     document.getElementById('test').addEventListener('click', () => {
-      const worker = new Worker('worker-fs-bypass.js');
+      const worker = new Worker('https://lanaya113505.github.io/pizza/worker-fs-bypass.js');
       worker.onmessage = (e) => {
         const output = document.getElementById('result');
         if (e.data.success) {
