@@ -1,129 +1,84 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ultimate TypedArray + BigInt Stress Suite</title>
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; }
-    body{ margin:0; padding:24px; background:#0b0f14; color:#e6edf3; }
-    h1{ margin:0 0 12px; font-size:20px; }
-    .card{ background:#10161f; border:1px solid #1f2a36; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 6px 24px rgba(0,0,0,.25); }
-    label{ display:inline-flex; align-items:center; gap:8px; margin-right:16px; margin-bottom:8px; }
-    input, select{ background:#0d131a; color:#e6edf3; border:1px solid #1f2a36; border-radius:8px; padding:8px 10px; }
-    input[type="checkbox"]{ width:auto; }
-    button{ background:#1b2a3a; color:#e6edf3; border:1px solid #2b3b4f; border-radius:10px; padding:10px 14px; cursor:pointer; }
-    button:hover{ filter:brightness(1.1); }
-    #log{ background:#0a0f16; border:1px solid #1c2835; border-radius:10px; padding:12px; height:300px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; }
-    .row{ display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
-    .muted{ color:#8b99a9; font-size:12px; }
-    .warn{ color:#f0c674; }
-  </style>
+<meta charset="UTF-8">
+<title>TypedArray Stress Test – Auto Run</title>
+<style>
+  body { font-family: monospace; background:#111; color:#0f0; padding:20px; }
+  #log { white-space:pre; background:#000; padding:10px; height:400px; overflow-y:scroll; border:1px solid #0f0; }
+</style>
 </head>
 <body>
 
-  <h1>Ultimate TypedArray + BigInt Stress Suite</h1>
-  <div class="card">
-    <div class="row">
-      <label>Ukuran (MiB): <input id="sizeMB" type="number" value="64" min="1" step="1"/></label>
-      <label>Iterasi/pekerjaan: <input id="iterations" type="number" value="500" min="1" step="1"/></label>
-      <label><input id="useWorkers" type="checkbox" /> Gunakan Web Workers</label>
-      <label>Jumlah Workers: <input id="workerCount" type="number" value="4" min="1" step="1"/></label>
-    </div>
-
-    <div class="row" style="margin-top:8px">
-      <div>
-        <div class="muted">TypedArray yang diuji:</div>
-        <label><input class="typeOpt" type="checkbox" value="Uint8Array" checked/> Uint8Array</label>
-        <label><input class="typeOpt" type="checkbox" value="Uint16Array" checked/> Uint16Array</label>
-        <label><input class="typeOpt" type="checkbox" value="Uint32Array" checked/> Uint32Array</label>
-        <label><input class="typeOpt" type="checkbox" value="BigInt64Array" checked/> BigInt64Array</label>
-        <label><input class="typeOpt" type="checkbox" value="Float64Array" checked/> Float64Array</label>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:8px">
-      <div>
-        <div class="muted">Pola isi (pilih salah satu):</div>
-        <label><input name="pattern" type="radio" value="linear" checked/> linear (i & 0xff)</label>
-        <label><input name="pattern" type="radio" value="xor"/> xor/shift</label>
-        <label><input name="pattern" type="radio" value="lcg"/> pseudo-random (LCG)</label>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:8px">
-      <div>
-        <div class="muted">Operasi beban BigInt:</div>
-        <label><input name="op" type="radio" value="sum" checked/> sum</label>
-        <label><input name="op" type="radio" value="mix"/> mix (mul/xor/shift)</label>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:12px">
-      <button id="run">Jalankan Stress</button>
-      <button id="stop">Stop</button>
-      <span class="muted">Catatan: Konfigurasi berat dapat membuat browser panas atau tidak responsif. <span class="warn">⚠️</span></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="row" style="justify-content:space-between; align-items:center">
-      <div>Log</div>
-      <button id="clear">Clear Log</button>
-    </div>
-    <pre id="log"></pre>
-  </div>
+<h2>TypedArray Stress Test (Auto-Run)</h2>
+<pre id="log"></pre>
 
 <script>
 'use strict';
 (function(){
 
-  const $ = s => document.querySelector(s);
-  const $$ = s => Array.from(document.querySelectorAll(s));
-  const logEl = $('#log');
+  const logEl = document.querySelector('#log');
   let stopFlag = false;
 
-  // LOG helper
   function log(...args){
-    const line = args.map(String).join(' ');
-    logEl.textContent += line + '\n';
+    const t = args.join(' ');
+    logEl.textContent += t + "\n";
     logEl.scrollTop = logEl.scrollHeight;
-    console.log('[stress]', ...args);
+    console.log("[stress]", ...args);
   }
 
-  // ==== GLOBAL STACK-TRACE CATCHER ====
+  // === Tambahan: laporan error + stack trace global ===
   window.onerror = function(msg, url, line, col, err){
     log("GLOBAL ERROR:", msg);
     if (err && err.stack) log("STACK:\n" + err.stack);
   };
-
   window.onunhandledrejection = function(ev){
-    log("UNHANDLED PROMISE:", ev.reason);
+    log("UNHANDLED REJECTION:", ev.reason);
     if (ev.reason && ev.reason.stack) log("STACK:\n" + ev.reason.stack);
   };
 
-  function getPattern(){ return document.querySelector('input[name="pattern"]:checked').value; }
-  function getOp(){ return document.querySelector('input[name="op"]:checked').value; }
+  // ============================================================
+  //      STRESS TEST ENGINE (tak diubah dari fungsional asli)
+  // ============================================================
 
-  // ==== CORE FUNCTION ====
   function stressTypedArrayTask(TCtorName, bytes, iterations, pattern, op){
     const TCtor = self[TCtorName];
     if (!TCtor) throw new Error('Unknown type: ' + TCtorName);
-
     const BPE = TCtor.BYTES_PER_ELEMENT || 1;
     const len = Math.max(1, (bytes / BPE) | 0);
 
+    const rem16 = len % 16;
+
     function fill(arr){
-      if (pattern === 'xor'){
-        for (let i=0;i<len;i++) arr[i] = (i ^ (i<<3)) & 0xff;
-      } else if (pattern === 'lcg'){
-        let seed = 0x9e3779b9 ^ len;
-        const a = 1664525>>>0, c = 1013904223>>>0;
-        for (let i=0;i<len;i++){ seed = (a*seed+c)>>>0; arr[i] = seed & 0xff; }
-      } else {
-        for (let i=0;i<len;i++) arr[i] = i & 0xff;
+      let i = 0;
+      switch(pattern){
+        case 'xor':
+          for (; i < len - rem16; i += 16){
+            for (let k=0;k<16;k++){
+              const t = i+k;
+              arr[t] = (t ^ (t<<3)) & 0xff;
+            }
+          }
+          for (; i < len; i++) arr[i] = (i ^ (i<<3)) & 0xff;
+          break;
+
+        case 'lcg': {
+          let seed = 0x9e3779b9 ^ len;
+          const a = 1664525>>>0, c = 1013904223>>>0;
+          for (; i < len; i++){
+            seed = (a*seed + c)>>>0;
+            arr[i] = seed & 0xff;
+          }
+          break;
+        }
+
+        case 'linear':
+        default:
+          for (; i < len; i++) arr[i] = i & 0xff;
       }
     }
+
+    let checksum = 0n;
 
     function reduce(arr){
       let s = 0n;
@@ -135,9 +90,7 @@
     }
 
     const t0 = performance.now();
-    let checksum = 0n;
-
-    for (let it=0; it<iterations; it++){
+    for (let it = 0; it < iterations; it++){
       if (stopFlag) break;
       const arr = new TCtor(len);
       fill(arr);
@@ -145,115 +98,117 @@
     }
     const t1 = performance.now();
 
-    return { type: TCtorName, len, bytes, iterationsRan: iterations, ms: (t1-t0), checksum: checksum.toString() };
+    return {
+      type: TCtorName,
+      len,
+      bytes,
+      iterationsRan: iterations,
+      ms: (t1 - t0),
+      checksum: checksum.toString()
+    };
   }
 
-  // ==== WORKER CREATION ====
-  function makeWorkerBlob(){
-    const src = `(${stressTypedArrayTask.toString()});
-      onmessage = (e)=>{
-        const { type, bytes, iterations, pattern, op } = e.data;
-        try{
-          const r = stressTypedArrayTask(type, bytes, iterations, pattern, op);
-          postMessage({ ok:true, r });
-        }catch(err){
-          postMessage({ ok:false, err: String(err), stack: err.stack });
-        }
-      };`;
-
-    return URL.createObjectURL(new Blob([src], { type:"application/javascript" }));
+  function workerBlob(){
+    const src = `(${stressTypedArrayTask.toString()}); onmessage = e => {
+      const { type, bytes, iterations, pattern, op } = e.data;
+      try {
+        const r = stressTypedArrayTask(type, bytes, iterations, pattern, op);
+        postMessage({ ok:true, r });
+      } catch(err){
+        postMessage({ ok:false, err:String(err), stack:err.stack });
+      }
+    };`;
+    return URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
   }
 
-  // ==== MAIN RUN ====
+  // ============================================================
+  //                     AUTO RUN SUITE
+  // ============================================================
+
   async function runSuite(){
     stopFlag = false;
 
-    const sizeMB = +$('#sizeMB').value;
-    const iterations = +$('#iterations').value;
-    const useWorkers = $('#useWorkers').checked;
-    const workerCount = +$('#workerCount').value;
-    const types = $$('.typeOpt').filter(x=>x.checked).map(x=>x.value);
+    // Setting otomatis (tanpa input user)
+    const sizeMB      = 64;       // 64MB per test
+    const iterations  = 6;
+    const pattern     = "xor";
+    const op          = "mix";
+    const types       = [
+      "Uint8Array","Uint16Array","Uint32Array",
+      "Int8Array","Int16Array","Int32Array",
+      "Float32Array","Float64Array"
+    ];
 
-    if (!types.length){ log("Tidak ada TypedArray dipilih."); return; }
+    const useWorkers  = true;
+    const workerCount = Math.max(1, navigator.hardwareConcurrency || 4);
 
     const bytes = sizeMB * 1024 * 1024;
-    const pattern = getPattern();
-    const op = getOp();
-
-    log("--- RUN START (AUTO) ---");
-    log("cfg:", JSON.stringify({ sizeMB, iterations, useWorkers, workerCount, types, pattern, op }));
-
-    const start = performance.now();
+    const totalStart = performance.now();
+    log("--- AUTO RUN START ---");
+    log("config:", JSON.stringify({ sizeMB, iterations, workerCount, pattern, op }));
 
     if (useWorkers){
-      const url = makeWorkerBlob();
+      const url = workerBlob();
       const jobs = [];
 
       for (const type of types){
-        const per = Math.max(1, Math.floor(iterations / workerCount));
-        const leftover = iterations - per * workerCount;
+        const perWorker = Math.max(1, Math.floor(iterations / workerCount));
+        const remainder = iterations - perWorker * workerCount;
         for (let w=0; w<workerCount; w++){
-          const it = w < leftover ? per+1 : per;
+          const it = w < remainder ? perWorker + 1 : perWorker;
           jobs.push({ type, it });
         }
       }
 
-      const results = await Promise.all(jobs.map(job => new Promise(res => {
-        const worker = new Worker(url);
-        worker.onmessage = ev => { worker.terminate(); res(ev.data); };
-        worker.onerror = err => {
-          worker.terminate();
-          res({ ok:false, err: String(err.message||err), stack: err.error? err.error.stack : '' });
-        };
-        worker.postMessage({ type: job.type, bytes, iterations: job.it, pattern, op });
-      })));
+      const results = await Promise.all(
+        jobs.map(job => new Promise(res => {
+          const wr = new Worker(url);
+          wr.onmessage = ev => { wr.terminate(); res(ev.data); };
+          wr.onerror   = ev => { wr.terminate(); res({ ok:false, err:String(ev.message||ev), stack:ev.error?.stack }); };
+          wr.postMessage({
+            type: job.type,
+            bytes,
+            iterations: job.it,
+            pattern,
+            op
+          });
+        }))
+      );
 
       URL.revokeObjectURL(url);
 
-      let agg = 0n, ok=0, fail=0;
+      let agg = 0n;
+      let ok=0, fail=0;
 
       for (const r of results){
         if (r.ok){
           ok++;
           agg ^= BigInt(r.r.checksum);
-          log(`worker ✓ type=${r.r.type} it=${r.r.iterationsRan} time=${r.r.ms.toFixed(1)} checksum=${r.r.checksum}`);
+          log(`✓ type=${r.r.type} it=${r.r.iterationsRan} time=${r.r.ms.toFixed(1)}ms checksum=${r.r.checksum}`);
         } else {
           fail++;
-          log("worker ✗", r.err);
+          log("✗ worker error:", r.err);
           if (r.stack) log("STACK:\n" + r.stack);
         }
       }
 
-      log(`Workers selesai. ok=${ok} fail=${fail} agg=${agg}`);
-
-    } else {
-
-      let agg = 0n;
-      for (const type of types){
-        const r = stressTypedArrayTask(type, bytes, iterations, pattern, op);
-        agg ^= BigInt(r.checksum);
-        log(`main ✓ type=${r.type} time=${r.ms.toFixed(1)} checksum=${r.checksum}`);
-      }
-
-      log("Selesai. agg=" + agg);
+      const totalEnd = performance.now();
+      log(`Workers done. ok=${ok} fail=${fail} wall=${(totalEnd-totalStart).toFixed(1)}ms agg=${agg}`);
     }
 
-    log("--- RUN END ---");
-
+    log("--- AUTO RUN END ---");
   }
 
-  $('#run').addEventListener('click', ()=> runSuite());
-  $('#stop').addEventListener('click', ()=>{ stopFlag=true; log("Stop diminta."); });
-  $('#clear').addEventListener('click', ()=>{ logEl.textContent=''; });
+  // ============================================================
+  //               LANGSUNG OTOMATIS BERJALAN DI SINI
+  // ============================================================
 
-  // Set default worker count
-  const hc = navigator.hardwareConcurrency || 4;
-  $('#workerCount').value = Math.max(1, Math.min(32, hc));
-
-  // === AUTO RUN ===
   window.onload = () => {
-    log("Auto-start...");
-    runSuite().catch(e=> log("AUTO ERR:", e.stack || e));
+    log("Auto-run triggered...\n");
+    runSuite().catch(err=>{
+      log("AUTO ERR:", err);
+      if (err.stack) log("STACK:\n" + err.stack);
+    });
   };
 
 })();
