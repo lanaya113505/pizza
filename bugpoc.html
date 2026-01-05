@@ -9,13 +9,7 @@
 <p>Buka DevTools Console dan biarkan jalan.</p>
 
 <script>
-/*
-  Target:
-  - Banyak JIT allocation (new Function)
-  - WASM executable memory
-  - GC + parallel sweeper
-  - iframe create/destroy (HTMLDocumentParser activity)
-*/
+/* ================= helpers ================= */
 
 function makeJitFunctions(n) {
   const arr = [];
@@ -41,13 +35,21 @@ function compileWasm() {
   return WebAssembly.compile(wasmBytes).catch(() => {});
 }
 
-// iframe payload (string HTML)
+/* ================= iframe payload ================= */
+
 function iframeHTML() {
   return `
 <!DOCTYPE html>
 <html>
 <body>
 <script>
+  // parser + tokenizer pressure
+  for (let i = 0; i < 3000; i++) {
+    const d = document.createElement("div");
+    d.textContent = i;
+    document.body.appendChild(d);
+  }
+
   function spam() {
     let arr = [];
     for (let i = 0; i < 1500; i++) {
@@ -60,17 +62,39 @@ function iframeHTML() {
     arr = null;
     if (parent.gc) parent.gc();
   }
+
   setInterval(spam, 10);
 <\/script>
 </body>
 </html>`;
 }
 
-// main stress loop
-(async function stress() {
-  console.log("[*] stress started");
+/* ================= phase 1: iframe render ================= */
 
+console.log("[1] create warm-up iframe");
+
+let warmupIframe = document.createElement("iframe");
+warmupIframe.srcdoc = iframeHTML();
+document.body.appendChild(warmupIframe);
+
+warmupIframe.onload = () => {
+  console.log("[2] iframe loaded → tokenizer active");
+};
+
+/* ================= phase 2: delay ================= */
+
+setTimeout(() => {
+  console.log("[3] starting fuzz AFTER iframe render");
+
+  stress();   // ⬅️ fuzz baru jalan di sini
+
+}, 2000); // ⏱️ ubah: 1000 / 2000 / 5000 ms
+
+/* ================= phase 3: fuzz ================= */
+
+async function stress() {
   for (let i = 0; i < 500; i++) {
+
     // --- main document JIT ---
     let funcs = makeJitFunctions(2000);
     hotRun(funcs, 15);
@@ -80,15 +104,13 @@ function iframeHTML() {
 
     if (typeof gc === "function") gc();
 
-    // --- iframe create ---
+    // --- churn iframe ---
     let iframe = document.createElement("iframe");
     iframe.srcdoc = iframeHTML();
     document.body.appendChild(iframe);
 
-    // biarkan iframe hidup sebentar
     await new Promise(r => setTimeout(r, 20));
 
-    // --- destroy iframe ---
     iframe.remove();
     iframe = null;
 
@@ -100,7 +122,7 @@ function iframeHTML() {
   }
 
   console.log("[*] stress finished");
-})();
+}
 </script>
 </body>
 </html>
