@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>V8 JIT + iframe + GC Stress</title>
+  <title>V8 Infinite JIT + iframe + GC Fuzz</title>
 </head>
 <body>
-<h1>V8 ThreadIsolation / JIT Stress (iframe)</h1>
-<p>Buka DevTools Console dan biarkan jalan.</p>
+<h1>V8 ThreadIsolation / Infinite Fuzz</h1>
+<p>Biarkan tab ini jalan.</p>
 
 <script>
 /* ================= helpers ================= */
@@ -35,7 +35,7 @@ function compileWasm() {
   return WebAssembly.compile(wasmBytes).catch(() => {});
 }
 
-/* ================= iframe payload ================= */
+/* ================= iframe srcdoc ================= */
 
 function iframeHTML() {
   return `
@@ -43,85 +43,91 @@ function iframeHTML() {
 <html>
 <body>
 <script>
-  // parser + tokenizer pressure
-  for (let i = 0; i < 3000; i++) {
+  // HTMLDocumentParser + tokenizer pressure
+  for (let i = 0; i < 5000; i++) {
     const d = document.createElement("div");
-    d.textContent = i;
+    d.textContent = "tok-" + i;
     document.body.appendChild(d);
   }
 
   function spam() {
     let arr = [];
-    for (let i = 0; i < 1500; i++) {
+    for (let i = 0; i < 2000; i++) {
       arr.push(new Function("y", "return y * 2;"));
     }
     let v = 1;
-    for (let r = 0; r < 20; r++) {
+    for (let r = 0; r < 30; r++) {
       for (let f of arr) v = f(v);
     }
     arr = null;
     if (parent.gc) parent.gc();
   }
 
-  setInterval(spam, 10);
+  setInterval(spam, 5);
 <\/script>
 </body>
 </html>`;
 }
 
-/* ================= phase 1: iframe render ================= */
+/* ================= PHASE 1: YouTube iframe ================= */
 
-console.log("[1] create warm-up iframe");
+const yt = document.createElement("iframe");
+yt.width = "560";
+yt.height = "315";
+yt.src =
+  "https://www.youtube.com/embed/i5p51UDoW0U?list=RDi5p51UDoW0U&autoplay=1";
+yt.allow =
+  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+yt.allowFullscreen = true;
+document.body.appendChild(yt);
 
-let warmupIframe = document.createElement("iframe");
+/* ================= PHASE 2: tokenizer iframe ================= */
+
+const warmupIframe = document.createElement("iframe");
 warmupIframe.srcdoc = iframeHTML();
 document.body.appendChild(warmupIframe);
 
-warmupIframe.onload = () => {
-  console.log("[2] iframe loaded → tokenizer active");
-};
-
-/* ================= phase 2: delay ================= */
+/* ================= PHASE 3: delay ================= */
 
 setTimeout(() => {
-  console.log("[3] starting fuzz AFTER iframe render");
+  console.log("[*] starting INFINITE fuzz");
+  infiniteFuzz();
+}, 3000);
 
-  stress();   // ⬅️ fuzz baru jalan di sini
+/* ================= PHASE 4: infinite fuzz ================= */
 
-}, 2000); // ⏱️ ubah: 1000 / 2000 / 5000 ms
+async function infiniteFuzz() {
+  let iter = 0;
 
-/* ================= phase 3: fuzz ================= */
-
-async function stress() {
-  for (let i = 0; i < 500; i++) {
-
-    // --- main document JIT ---
-    let funcs = makeJitFunctions(2000);
-    hotRun(funcs, 15);
+  while (true) {
+    // ---- main doc JIT ----
+    let funcs = makeJitFunctions(3000);
+    hotRun(funcs, 20);
     funcs = null;
 
     await compileWasm();
 
     if (typeof gc === "function") gc();
 
-    // --- churn iframe ---
+    // ---- churn iframe ----
     let iframe = document.createElement("iframe");
     iframe.srcdoc = iframeHTML();
     document.body.appendChild(iframe);
 
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 10));
 
     iframe.remove();
     iframe = null;
 
     if (typeof gc === "function") gc();
 
-    if (i % 10 === 0) {
-      console.log("[*] iter", i);
+    if ((++iter % 50) === 0) {
+      console.log("[*] iter", iter);
     }
-  }
 
-  console.log("[*] stress finished");
+    // kasih napas kecil → biar parallel sweeper & thread pool hidup
+    await new Promise(r => setTimeout(r, 1));
+  }
 }
 </script>
 </body>
