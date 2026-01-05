@@ -125,7 +125,6 @@ async function infiniteFuzz() {
       console.log("[*] iter", iter);
     }
 
-    // kasih napas kecil → biar parallel sweeper & thread pool hidup
     await new Promise(r => setTimeout(r, 1));
   }
 }
