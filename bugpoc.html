@@ -1,67 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>V8 Bad-Free Continuous Fuzzer</title>
+  <meta charset="utf-8">
+  <title>V8 JIT / ThreadIsolation Stress</title>
 </head>
 <body>
+<h1>V8 JIT Stress Test</h1>
+<p>Buka DevTools Console. Biarkan halaman ini berjalan.</p>
+
 <script>
-// Continuous high-pressure JIT churn fuzzer
-// Targets: ThreadIsolation::UnregisterJitPage (code-memory-access.cc)
+/*
+  Target:
+  - Memicu banyak alokasi executable memory (JIT)
+  - Memicu optimisasi / deoptimisasi
+  - Memicu GC + sweeper parallel
+*/
 
-function makeJitFunction(seed) {
-  // Unique, non-inlineable, non-optimizable-yet-JIT-able body
-  return new Function(`
-    let a = ${seed};
-    for (let i = 0; i < 3000; i++) {
-      a = (a * 1664525 + 1013904223) | 0;
+// 1) Banyak function dinamis → JIT allocations
+function makeJitFunctions(count) {
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    arr.push(new Function("x", "return x + 1;"));
+  }
+  return arr;
+}
+
+// 2) Hot loop → paksa optimize
+function hotLoop(funcs, rounds) {
+  let x = 0;
+  for (let r = 0; r < rounds; r++) {
+    for (let f of funcs) {
+      x = f(x);
     }
-    return a;
-  `);
+  }
+  return x;
 }
 
-function fuzzRound() {
-  const N = 6000;
-  const funcs = new Array(N);
-
-  // 1. Allocate & JIT many unique functions
-  for (let i = 0; i < N; i++) {
-    const f = makeJitFunction((Math.random() * 1e9) | 0);
-    f(); // Trigger compilation
-    funcs[i] = f;
-  }
-
-  // 2. Null all to make collectible
-  for (let i = 0; i < N; i++) {
-    funcs[i] = null;
-  }
-
-  // 3. Force aggressive sweeping
-  if (typeof gc === 'function') {
-    for (let i = 0; i < 20; i++) gc();
-  }
-
-  // 4. Allocate another batch immediately
-  const funcs2 = new Array(N);
-  for (let i = 0; i < N; i++) {
-    const f = makeJitFunction((Math.random() * 1e9) | 0 + 0x1337);
-    f();
-    funcs2[i] = f;
-  }
-  funcs2.length = 0;
-
-  if (typeof gc === 'function') {
-    for (let i = 0; i < 15; i++) gc();
-  }
+// 3) WASM minimal → executable memory tambahan
+function compileWasm() {
+  // wasm module kosong (valid minimal)
+  const wasmBytes = new Uint8Array([
+    0x00,0x61,0x73,0x6d, // magic
+    0x01,0x00,0x00,0x00  // version
+  ]);
+  return WebAssembly.compile(wasmBytes).catch(() => {});
 }
 
-// Run rounds as fast as possible — no delays, no navigation
-let round = 0;
-while (true) {
-  // Optional: log every 10 rounds (may slow down slightly)
-  // if (++round % 10 === 0) console.log("Fuzz round", round);
+// 4) Loop stress utama
+(async function stress() {
+  console.log("[*] starting stress");
 
-  fuzzRound();
-}
+  for (let iter = 0; iter < 1000; iter++) {
+    // Buat & buang banyak fungsi
+    let funcs = makeJitFunctions(2000);
+    hotLoop(funcs, 20);
+
+    // Drop reference → eligible for GC
+    funcs = null;
+
+    // WASM compile (kadang memicu JIT allocator)
+    await compileWasm();
+
+    // Paksa GC kalau tersedia
+    if (typeof gc === "function") {
+      gc();
+    }
+
+    if (iter % 10 === 0) {
+      console.log("[*] iter", iter);
+    }
+  }
+
+  console.log("[*] done");
+})();
 </script>
 </body>
 </html>
