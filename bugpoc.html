@@ -2,76 +2,104 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>V8 JIT / ThreadIsolation Stress</title>
+  <title>V8 JIT + iframe + GC Stress</title>
 </head>
 <body>
-<h1>V8 JIT Stress Test</h1>
-<p>Buka DevTools Console. Biarkan halaman ini berjalan.</p>
+<h1>V8 ThreadIsolation / JIT Stress (iframe)</h1>
+<p>Buka DevTools Console dan biarkan jalan.</p>
 
 <script>
 /*
   Target:
-  - Memicu banyak alokasi executable memory (JIT)
-  - Memicu optimisasi / deoptimisasi
-  - Memicu GC + sweeper parallel
+  - Banyak JIT allocation (new Function)
+  - WASM executable memory
+  - GC + parallel sweeper
+  - iframe create/destroy (HTMLDocumentParser activity)
 */
 
-// 1) Banyak function dinamis → JIT allocations
-function makeJitFunctions(count) {
+function makeJitFunctions(n) {
   const arr = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < n; i++) {
     arr.push(new Function("x", "return x + 1;"));
   }
   return arr;
 }
 
-// 2) Hot loop → paksa optimize
-function hotLoop(funcs, rounds) {
+function hotRun(funcs, rounds) {
   let x = 0;
   for (let r = 0; r < rounds; r++) {
-    for (let f of funcs) {
-      x = f(x);
-    }
+    for (let f of funcs) x = f(x);
   }
   return x;
 }
 
-// 3) WASM minimal → executable memory tambahan
 function compileWasm() {
-  // wasm module kosong (valid minimal)
   const wasmBytes = new Uint8Array([
-    0x00,0x61,0x73,0x6d, // magic
-    0x01,0x00,0x00,0x00  // version
+    0x00,0x61,0x73,0x6d,
+    0x01,0x00,0x00,0x00
   ]);
   return WebAssembly.compile(wasmBytes).catch(() => {});
 }
 
-// 4) Loop stress utama
+// iframe payload (string HTML)
+function iframeHTML() {
+  return `
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+  function spam() {
+    let arr = [];
+    for (let i = 0; i < 1500; i++) {
+      arr.push(new Function("y", "return y * 2;"));
+    }
+    let v = 1;
+    for (let r = 0; r < 20; r++) {
+      for (let f of arr) v = f(v);
+    }
+    arr = null;
+    if (parent.gc) parent.gc();
+  }
+  setInterval(spam, 10);
+<\/script>
+</body>
+</html>`;
+}
+
+// main stress loop
 (async function stress() {
-  console.log("[*] starting stress");
+  console.log("[*] stress started");
 
-  for (let iter = 0; iter < 1000; iter++) {
-    // Buat & buang banyak fungsi
+  for (let i = 0; i < 500; i++) {
+    // --- main document JIT ---
     let funcs = makeJitFunctions(2000);
-    hotLoop(funcs, 20);
-
-    // Drop reference → eligible for GC
+    hotRun(funcs, 15);
     funcs = null;
 
-    // WASM compile (kadang memicu JIT allocator)
     await compileWasm();
 
-    // Paksa GC kalau tersedia
-    if (typeof gc === "function") {
-      gc();
-    }
+    if (typeof gc === "function") gc();
 
-    if (iter % 10 === 0) {
-      console.log("[*] iter", iter);
+    // --- iframe create ---
+    let iframe = document.createElement("iframe");
+    iframe.srcdoc = iframeHTML();
+    document.body.appendChild(iframe);
+
+    // biarkan iframe hidup sebentar
+    await new Promise(r => setTimeout(r, 20));
+
+    // --- destroy iframe ---
+    iframe.remove();
+    iframe = null;
+
+    if (typeof gc === "function") gc();
+
+    if (i % 10 === 0) {
+      console.log("[*] iter", i);
     }
   }
 
-  console.log("[*] done");
+  console.log("[*] stress finished");
 })();
 </script>
 </body>
