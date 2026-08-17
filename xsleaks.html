@@ -2,32 +2,128 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>1websaya.com - Node.js Proxy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1websaya.com - Live Iframe Injection</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #1e1e1e; color: #fff; padding: 20px; 
+            display: flex; flex-direction: column; height: 100vh; margin: 0; box-sizing: border-box; 
+        }
+        .header { margin-bottom: 20px; text-align: center; }
+        .header h1 { margin: 0 0 5px 0; color: #4fc3f7; }
+        .header p { margin: 0; font-size: 14px; color: #aaa; }
+        
+        .container { display: flex; gap: 20px; flex: 1; min-height: 0; }
+        .panel { background: #2d2d2d; padding: 15px; border-radius: 8px; display: flex; flex-direction: column; }
+        .left-panel { flex: 1; max-width: 350px; }
+        .right-panel { flex: 2; position: relative; }
+        
+        textarea { 
+            flex: 1; width: 100%; background: #1e1e1e; color: #4fc3f7; 
+            border: 2px solid #555; padding: 15px; border-radius: 4px; 
+            resize: none; font-size: 16px; margin-top: 10px; box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        
+        iframe { width: 100%; height: 100%; border: none; border-radius: 4px; background: #fff; }
+        
+        /* Loading indicator */
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #333; background: #ffcc00; padding: 10px 20px; border-radius: 20px;
+            font-weight: bold; font-size: 14px;
+        }
+    </style>
 </head>
 <body>
 
-    <h3>Hasil Hover:</h3>
-    <textarea id="hasil" style="width:100%; height:100px;"></textarea>
+    <div class="header">
+        <h1>🌐 1websaya.com</h1>
+        <p>Memuat webkuliah.com secara live dan menyuntikkan script pendeteksi hover</p>
+    </div>
 
-    <h3>Iframe Web Kuliah</h3>
-    <!-- Iframe memanggil proxy Node.js milik kita -->
-    <iframe id="myIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com" style="width:100%; height:500px;"></iframe>
+    <div class="container">
+        <!-- Panel 1websaya.com -->
+        <div class="panel left-panel">
+            <h3>Hasil Tangkapan Hover</h3>
+            <textarea id="hasil-copy" readonly placeholder="Menunggu kursor diarahkan ke teks di dalam iframe..."></textarea>
+        </div>
+
+        <!-- Panel Iframe -->
+        <div class="panel right-panel">
+            <h3 style="margin-top: 0;">Iframe: Live webkuliah.com</h3>
+            <div id="loading">Memuat website asli...</div>
+            
+            <!-- Iframe dibiarkan kosong dulu, nanti diisi lewat JavaScript -->
+            <iframe id="myIframe"></iframe>
+        </div>
+    </div>
 
     <script>
+        const targetUrl = 'https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com'; // Web target Anda
         const iframe = document.getElementById('myIframe');
-        const hasil = document.getElementById('hasil');
+        const outputBox = document.getElementById('hasil-copy');
+        const loading = document.getElementById('loading');
 
-        iframe.onload = function() {
-            // Kita punya akses penuh ke dalam iframe sekarang!
-            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        // 1. Menggunakan layanan Public CORS Proxy agar bisa mengunduh HTML webkuliah.com
+        // tanpa diblokir oleh sistem keamanan server aslinya.
+        const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl);
 
-            iframeDoc.addEventListener('mouseover', function(e) {
-                let teks = e.target.innerText;
-                if (teks && teks.trim() !== '') {
-                    hasil.value = teks; // Teks otomatis masuk ke textarea saat hover
+        fetch(proxyUrl)
+            .then(response => response.text())
+            .then(html => {
+                loading.style.display = 'none'; // Hilangkan tulisan loading
+
+                // 2. Suntikkan <base> tag agar CSS dan Gambar dari web aslinya tidak rusak (tetap me-load dari webkuliah.com)
+                let modifiedHtml = html;
+                if (modifiedHtml.includes('<head>')) {
+                    modifiedHtml = modifiedHtml.replace('<head>', `<head><base href="${targetUrl}/">`);
+                } else {
+                    modifiedHtml = `<base href="${targetUrl}/">` + modifiedHtml;
                 }
+
+                // 3. Suntikkan script "Hover to PostMessage" di bagian paling bawah HTML
+                const injectedScript = `
+                    <script>
+                        // Tambahkan CSS agar kursor berubah saat diarahkan
+                        const style = document.createElement('style');
+                        style.innerHTML = '* { cursor: crosshair !important; } *:hover { outline: 1px solid #4fc3f7; }';
+                        document.head.appendChild(style);
+
+                        // Deteksi saat kursor diarahkan ke elemen apa pun
+                        document.addEventListener('mouseover', function(e) {
+                            let text = e.target.innerText || e.target.textContent;
+                            if (text && text.trim() !== '') {
+                                // Kirim teks ke website utama (1websaya.com)
+                                window.parent.postMessage({
+                                    tipe: 'hoverData',
+                                    teks: text.trim()
+                                }, '*');
+                            }
+                        });
+                    <\/script>
+                `;
+
+                // 4. Gabungkan HTML asli dengan script suntikan kita, lalu masukkan ke dalam Iframe (srcdoc)
+                iframe.srcdoc = modifiedHtml + injectedScript;
+            })
+            .catch(error => {
+                loading.innerText = 'Gagal memuat web. Mungkin tidak ada internet atau diblokir.';
+                console.error('Error fetching webkuliah:', error);
             });
-        };
+
+        // 5. Menerima data dari dalam iframe
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.tipe === 'hoverData') {
+                outputBox.value = event.data.teks;
+                
+                // Efek visual menyala
+                outputBox.style.borderColor = "#4fc3f7";
+                setTimeout(() => { outputBox.style.borderColor = "#555"; }, 300);
+            }
+        });
     </script>
+
 </body>
 </html>
