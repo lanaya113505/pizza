@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="referrer" content="no-referrer">
+
+    <title>Auto Screenshot Test</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Preview screenshot diperbesar */
+        #preview {
+            position: fixed;
+            right: 100px;
+            bottom: 100px;
+            width: 80vw;
+            max-width: 8000px;
+            max-height: 80000vh;
+            border: 2px solid red;
+            background: white;
+            z-index: 99999;
+            overflow: auto;
+        }
+
+        #preview img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        #answer {
+            width: 400px;
+            height: 100px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <iframe
+        width="500"
+        height="500"
+        frameborder="0"
+        src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1">
+    </iframe>
+
+    <br><br>
+
+    <textarea id="answer" autofocus></textarea>
+
+    <div id="preview">
+        <div>Screenshot terakhir:</div>
+        <img id="screenshotPreview">
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+    <script>
+        const textarea = document.getElementById('answer');
+        const preview = document.getElementById('screenshotPreview');
+
+        async function takeScreenshot() {
+
+            try {
+
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: false
+                });
+
+                const image = canvas.toDataURL('image/png');
+
+                preview.src = image;
+
+                console.log(
+                    'Screenshot berhasil:',
+                    new Date().toLocaleTimeString()
+                );
+
+            } catch (error) {
+
+                console.error(
+                    'Screenshot gagal:',
+                    error
+                );
+
+            }
+        }
+
+        // Screenshot setiap 1 detik
+        setInterval(takeScreenshot, 1000);
+
+        // Fokus textarea setiap 1 detik
+        setInterval(() => {
+            textarea.focus();
+        }, 1000);
+
+        // Screenshot pertama
+        takeScreenshot();
+    </script>
+
+</body>
+</html>
