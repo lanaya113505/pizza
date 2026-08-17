@@ -45,8 +45,8 @@
         /* [DIUBAH] Lingkaran/Kotak penunjuk area yang sedang dibaca AI di sekitar kursor */
         #cursorTracker {
             position: absolute; 
-            width: 400px;   /* Diperbesar menjadi 400px */
-            height: 100px;  /* Diperbesar menjadi 100px */
+            width: 800px;   /* SANGAT BESAR: 800px */
+            height: 300px;  /* SANGAT BESAR: 300px */
             border: 2px solid #e74c3c; border-radius: 5px;
             pointer-events: none; /* Klik tembus ke iframe */
             display: none; background: rgba(231, 76, 60, 0.1);
@@ -66,7 +66,7 @@
         <!-- Panel 1websaya.com -->
         <div class="panel left-panel">
             <h3>Hasil OCR AI</h3>
-            <p style="font-size: 12px; color: #aaa; margin: 0">Arahkan kursor ke dalam iframe setelah aktif. AI butuh waktu ~1 detik untuk membaca teks di posisi kursor.</p>
+            <p style="font-size: 12px; color: #aaa; margin: 0">Area baca sangat besar (800x300). Tunggu sekitar 1 detik agar AI bisa memproses seluruh teks dalam kotak merah.</p>
             <textarea id="hasil-copy" readonly placeholder="Menunggu AI membaca..."></textarea>
         </div>
 
@@ -88,7 +88,7 @@
     <canvas id="hiddenCanvas"></canvas>
     
     <!-- [DIUBAH] Canvas untuk cropping area (Samakan dengan ukuran #cursorTracker) -->
-    <canvas id="processCanvas" width="400" height="100"></canvas>
+    <canvas id="processCanvas" width="800" height="300"></canvas>
 
     <script>
         const startBtn = document.getElementById('startBtn');
@@ -138,11 +138,11 @@
             lastMouseX = e.clientX - rect.left;
             lastMouseY = e.clientY - rect.top;
 
-            // [DIUBAH] Penyesuaian agar kursor persis di TENGAH kotak yang sudah diperbesar
-            // Setengah dari 400px adalah 200px, Setengah dari 100px adalah 50px
+            // [DIUBAH] Penyesuaian agar kursor persis di TENGAH kotak
+            // Setengah dari 800px = 400px, Setengah dari 300px = 150px
             cursorTracker.style.display = 'block';
-            cursorTracker.style.left = (lastMouseX - 200) + 'px'; 
-            cursorTracker.style.top = (lastMouseY - 50) + 'px';  
+            cursorTracker.style.left = (lastMouseX - 400) + 'px'; 
+            cursorTracker.style.top = (lastMouseY - 150) + 'px';  
         });
 
         iframeWrapper.addEventListener('mouseleave', () => {
@@ -154,34 +154,34 @@
                 if (!localStream || isOcrRunning || cursorTracker.style.display === 'none') return;
                 
                 isOcrRunning = true;
-                ocrStatus.innerText = "AI Sedang membaca teks di kursor...";
+                ocrStatus.innerText = "AI Sedang membaca teks di kursor (Area Ekstra Besar)...";
 
                 hiddenCanvas.width = video.videoWidth;
                 hiddenCanvas.height = video.videoHeight;
                 const ctx = hiddenCanvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
 
-                const baseOffset = 120; 
+                const baseOffset = 120; // Atur manual jika kotak merah dan tangkapan tidak sejajar
                 
                 const scaleX = video.videoWidth / window.innerWidth;
                 const scaleY = video.videoHeight / window.innerHeight;
                 
-                // [DIUBAH] Penyesuaian kordinat crop gambar agar sesuai dengan kotak baru
-                const cropX = (lastMouseX + iframeWrapper.offsetLeft) * scaleX - (200 * scaleX); 
-                const cropY = (lastMouseY + iframeWrapper.offsetTop + baseOffset) * scaleY - (50 * scaleY); 
+                // [DIUBAH] Penyesuaian koordinat crop gambar agar sesuai dengan ukuran kotak baru
+                const cropX = (lastMouseX + iframeWrapper.offsetLeft) * scaleX - (400 * scaleX); 
+                const cropY = (lastMouseY + iframeWrapper.offsetTop + baseOffset) * scaleY - (150 * scaleY); 
                 
                 const processCtx = processCanvas.getContext('2d');
                 
-                // [DIUBAH] Memotong gambar dari layar utama (hiddenCanvas) sebesar 400x100
+                // [DIUBAH] Memotong gambar sebesar 800x300 dari layar utama
                 processCtx.drawImage(hiddenCanvas, 
-                    cropX, cropY, 400 * scaleX, 100 * scaleY, // Koordinat dan ukuran asal
-                    0, 0, 400, 100 // Tujuan di canvas kecil
+                    cropX, cropY, 800 * scaleX, 300 * scaleY, // Area potong asli (800x300 dikali rasio layar)
+                    0, 0, 800, 300 // Target di canvas kecil
                 );
 
                 try {
                     const result = await worker.recognize(processCanvas);
                     
-                    const cleanText = result.data.text.trim().replace(/[\r\n]+/g, ' ');
+                    const cleanText = result.data.text.trim().replace(/[\r\n]+/g, '\n\n'); // Menggunakan enter agar teks panjang rapi
 
                     if (cleanText.length > 2) { 
                         outputBox.value = cleanText;
