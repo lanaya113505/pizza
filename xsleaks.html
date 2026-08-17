@@ -39,24 +39,22 @@
         
         #ocrStatus { font-size: 12px; color: #aaa; margin-top: 5px; height: 15px;}
         
-        /* Kotak penunjuk yang fix di pojok kanan atas, namun bisa digeser (draggable) */
+        /* Kotak merah yang bergerak mengikuti kursor mouse */
         #cursorTracker {
             position: absolute; 
-            top: 60px;      
-            right: 20px;    
             width: 320px;   
             height: 110px;  
             border: 2px solid #e74c3c; 
             border-radius: 5px;
+            pointer-events: none; /* Agar klik tembus ke iframe */
             display: none; 
-            background: rgba(231, 76, 60, 0.2);
-            cursor: move; /* Menandakan kotak ini bisa digeser */
+            background: rgba(231, 76, 60, 0.15);
             z-index: 10;
         }
     </style>
 </head>
 <body>
-    <h2>🌐 AI OCR Iframe Copy (Draggable Scanner)</h2>
+    <h2>🌐 AI OCR Iframe Copy (Follow Cursor + Auto-Stop Email)</h2>
     <div class="controls">        
         <button id="startBtn">Mulai Capture Layar & Aktifkan AI</button>
         <div id="ocrStatus"></div>    
@@ -65,14 +63,14 @@
     <div class="container">        
         <div class="panel left-panel">            
             <h3>Hasil OCR AI</h3>            
-            <p style="font-size: 12px; color: #aaa; margin: 0">Kotak merah bisa digeser ke posisi lain jika diperlukan. Otomatis berhenti saat (@) terdeteksi.</p>            
+            <p style="font-size: 12px; color: #aaa; margin: 0">Arahkan kotak merah ke email di pojok kanan atas. Pemindaian otomatis berhenti saat (@) tertangkap.</p>            
             <textarea id="hasil-copy" readonly placeholder="Menunggu AI membaca..."></textarea>        
         </div>
         
         <div class="panel right-panel" id="iframeWrapper">            
             <h3 style="margin-top: 0;">Iframe: webkuliah.com (Web Asli)</h3>                        
             <iframe id="targetIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>                        
-            <!-- Kotak penunjuk yang bisa digeser -->            
+            <!-- Kotak penunjuk yang mengikuti kursor -->            
             <div id="cursorTracker"></div>        
         </div>    
     </div>
@@ -94,7 +92,11 @@
         let localStream = null;        
         let isOcrRunning = false;        
         let scanInterval = null; 
+        let isScanningActive = false; // Status apakah scan masih berjalan atau sudah berhenti
         let worker = null;                 
+
+        let lastMouseX = 0;
+        let lastMouseY = 0;
 
         async function loadOcrWorker() {            
             ocrStatus.innerText = "Menginisialisasi AI Tesseract...";            
@@ -111,9 +113,10 @@
 
                 video.srcObject = localStream;                
                 startBtn.disabled = true;                
-                startBtn.innerText = "AI Aktif Memindai!";                
-                ocrStatus.innerText = "Pemindai aktif di pojok kanan (bisa digeser).";                
+                startBtn.innerText = "AI Aktif Mengikuti Kursor!";                
+                ocrStatus.innerText = "Arahkan kursor ke area email di pojok kanan atas.";                
                 
+                isScanningActive = true;
                 cursorTracker.style.display = 'block';
 
                 startOcrLoop();             
@@ -121,45 +124,38 @@
                 console.error("Gagal capture layar: " + err);                
                 ocrStatus.innerText = "Gagal: Izin rekam layar ditolak.";            }        });
 
-        // --- FITUR DRAGGABLE (Agar kotak merah bisa digerakkan dengan mouse) ---
-        let isDragging = false;
-        let startX, startY;
+        // --- FITUR IKUT KURSOR (MOUSEMOVE) ---
+        iframeWrapper.addEventListener('mousemove', (e) => {
+            if (!isScanningActive) return; // Jika sudah berhenti, kursor tidak menggerakkan kotak lagi
 
-        cursorTracker.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            startX = e.clientX - cursorTracker.offsetLeft;
-            startY = e.clientY - cursorTracker.offsetTop;
-            e.preventDefault();
+            const rect = iframeWrapper.getBoundingClientRect();
+            lastMouseX = e.clientX - rect.left;
+            lastMouseY = e.clientY - rect.top;
+
+            // Membuat kursor tepat berada di TENGAH kotak merah (320x110)
+            // 320 / 2 = 160 | 110 / 2 = 55
+            cursorTracker.style.left = (lastMouseX - 160) + 'px'; 
+            cursorTracker.style.top = (lastMouseY - 55) + 'px';  
         });
 
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            
-            let newX = e.clientX - startX;
-            let newY = e.clientY - startY;
-
-            // Batasi agar kotak tidak keluar dari area iframeWrapper
-            const maxW = iframeWrapper.clientWidth - cursorTracker.clientWidth;
-            const maxH = iframeWrapper.clientHeight - cursorTracker.clientHeight;
-
-            newX = Math.max(0, Math.min(newX, maxW));
-            newY = Math.max(0, Math.min(newY, maxH));
-
-            cursorTracker.style.left = newX + 'px';
-            cursorTracker.style.top = newY + 'px';
-            cursorTracker.style.right = 'auto'; // Matikan properti right agar posisinya akurat saat digeser
+        iframeWrapper.addEventListener('mouseleave', () => {
+            if (isScanningActive) {
+                cursorTracker.style.display = 'none';
+            }
         });
 
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
+        iframeWrapper.addEventListener('mouseenter', () => {
+            if (isScanningActive) {
+                cursorTracker.style.display = 'block';
+            }
         });
-        // ---------------------------------------------------------------------
+        // -------------------------------------
 
         function startOcrLoop() {            
             scanInterval = setInterval(async () => {                
-                if (!localStream || isOcrRunning) return;                                
+                if (!localStream || isOcrRunning || !isScanningActive) return;                                
                 isOcrRunning = true;                
-                ocrStatus.innerText = "AI Sedang membaca teks di area kotak...";
+                ocrStatus.innerText = "AI Sedang membaca teks di bawah kursor...";
 
                 hiddenCanvas.width = video.videoWidth;                
                 hiddenCanvas.height = video.videoHeight;                
@@ -170,6 +166,7 @@
                 const scaleX = video.videoWidth / window.innerWidth;                
                 const scaleY = video.videoHeight / window.innerHeight;                                
                 
+                // Ambil posisi kotak merah yang sedang mengikuti kursor
                 const trackerRect = cursorTracker.getBoundingClientRect();
                 const cropX = (trackerRect.left + iframeWrapper.offsetLeft) * scaleX; 
                 const cropY = (trackerRect.top + iframeWrapper.offsetTop + baseOffset) * scaleY;                                 
@@ -187,20 +184,21 @@
                     if (cleanText.length > 2) {                         
                         outputBox.value = cleanText;                    
                         
-                        // Berhenti otomatis jika karakter '@' terdeteksi
+                        // KONDISI BERHENTI OTOMATIS: Jika teks mengandung '@'
                         if (cleanText.includes('@')) {
-                            clearInterval(scanInterval);
-                            localStream.getTracks().forEach(track => track.stop());
-                            cursorTracker.style.display = 'none';
+                            isScanningActive = false; // Matikan status aktif
+                            clearInterval(scanInterval); // Hentikan loop pemindaian
                             
-                            ocrStatus.innerText = "✅ Email berhasil terdeteksi! Pemindaian berhenti.";
+                            localStream.getTracks().forEach(track => track.stop()); // Matikan rekaman layar
+                            cursorTracker.style.display = 'none'; // Sembunyikan kotak merah
+                            
+                            ocrStatus.innerText = "✅ Email terdeteksi! Pemindaian otomatis berhenti.";
                             ocrStatus.style.color = "#2ecc71";
                             startBtn.innerText = "Selesai (Email Ditemukan)";
-                            isOcrRunning = true; 
                             return;
                         }
                     }                    
-                    ocrStatus.innerText = "Memindai... (Geser kotak merah jika perlu)";                
+                    ocrStatus.innerText = "Memindai... Arahkan kursor ke email (@)";                
                 } catch (e) {                    
                     console.error("Gagal OCR:", e);                
                 }
