@@ -34,7 +34,7 @@
         }
 
         /* Iframe standar memuat web aslinya (SOP Aktif) */
-        iframe { width: 50%; height: 50%; border: none; border-radius: 1px; background: white; }
+        iframe { width: 100%; height: 100%; border: none; border-radius: 4px; background: white; }
 
         /* Canvas tersembunyi untuk proses cropping gambar */
         #hiddenCanvas, #processCanvas { display: none; }
@@ -42,9 +42,11 @@
         /* Indikator OCR */
         #ocrStatus { font-size: 12px; color: #aaa; margin-top: 5px; height: 15px;}
         
-        /* Lingkaran penunjuk area yang sedang dibaca AI di sekitar kursor */
+        /* [DIUBAH] Lingkaran/Kotak penunjuk area yang sedang dibaca AI di sekitar kursor */
         #cursorTracker {
-            position: absolute; width: 60px; height: 30px;
+            position: absolute; 
+            width: 400px;   /* Diperbesar menjadi 400px */
+            height: 100px;  /* Diperbesar menjadi 100px */
             border: 2px solid #e74c3c; border-radius: 5px;
             pointer-events: none; /* Klik tembus ke iframe */
             display: none; background: rgba(231, 76, 60, 0.1);
@@ -56,7 +58,6 @@
     <h2>🌐 AI OCR Iframe Copy (Tanpa Proxy)</h2>
 
     <div class="controls">
-        <!-- 2. Tombol untuk memulai perekaman layar -->
         <button id="startBtn">Mulai Capture Layar & Aktifkan AI</button>
         <div id="ocrStatus"></div>
     </div>
@@ -73,7 +74,6 @@
         <div class="panel right-panel" id="iframeWrapper">
             <h3 style="margin-top: 0;">Iframe: webkuliah.com (Web Asli)</h3>
             
-            <!-- Elemen Iframe standar (Cross-Domain) -->
             <iframe id="targetIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>
             
             <!-- Penunjuk area OCR di sekitar kursor -->
@@ -81,12 +81,14 @@
         </div>
     </div>
 
-    <!-- 3. Elemen Video tersembunyi untuk menampung feed rekaman layar -->
+    <!-- Elemen Video tersembunyi untuk menampung feed rekaman layar -->
     <video id="hiddenVideo" autoplay style="display:none;"></video>
+    
     <!-- Canvas untuk menangkap gambar frame video -->
     <canvas id="hiddenCanvas"></canvas>
-    <!-- Canvas untuk cropping area kecil di kursor -->
-    <canvas id="processCanvas" width="200" height="60"></canvas>
+    
+    <!-- [DIUBAH] Canvas untuk cropping area (Samakan dengan ukuran #cursorTracker) -->
+    <canvas id="processCanvas" width="400" height="100"></canvas>
 
     <script>
         const startBtn = document.getElementById('startBtn');
@@ -100,28 +102,22 @@
 
         let localStream = null;
         let isOcrRunning = false;
-        let worker = null; // Tesseract Worker
-
-        // Simpan posisi kursor terakhir
+        let worker = null; 
+        
         let lastMouseX = 0;
         let lastMouseY = 0;
 
-        // --- Langkah 1: Inisialisasi Library AI ---
         async function loadOcrWorker() {
             ocrStatus.innerText = "Menginisialisasi AI Tesseract...";
-            // Buat worker Tesseract untuk bahasa Inggris ('eng'). Pakai 'ind' untuk Indonesia.
             worker = await Tesseract.createWorker('eng');
             ocrStatus.innerText = "AI Siap. Silakan klik tombol 'Mulai Capture'";
         }
-        loadOcrWorker(); // Muat AI saat halaman dibuka
+        loadOcrWorker(); 
 
-        // --- Langkah 2: Fungsi Memulai Capture Layar (MediaDevices API) ---
         startBtn.addEventListener('click', async () => {
             try {
-                // Meminta izin rekam layar kepada pengguna.
-                // UNTUK DEMO: Pilih tab "AI OCR Iframe - Tugas Kuliah" di dialog Chrome.
                 localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { cursor: "always" }, // Pastikan kursor ikut direkam
+                    video: { cursor: "always" }, 
                     audio: false
                 });
 
@@ -130,73 +126,64 @@
                 startBtn.innerText = "AI Aktif. Arahkan kursor!";
                 ocrStatus.innerText = "Berhasil merekam layar. Arahkan kursor ke dalam iframe.";
                 
-                startOcrLoop(); // Mulai loop pembacaan teks
+                startOcrLoop(); 
             } catch (err) {
                 console.error("Gagal capture layar: " + err);
                 ocrStatus.innerText = "Gagal: Izin rekam layar ditolak.";
             }
         });
 
-        // Catat posisi kursor mouse saat bergerak di atas area iframe
         iframeWrapper.addEventListener('mousemove', (e) => {
-            // Kita butuh posisi kursor relatif terhadap Iframe
             const rect = iframeWrapper.getBoundingClientRect();
             lastMouseX = e.clientX - rect.left;
             lastMouseY = e.clientY - rect.top;
 
-            // Update penunjuk visual di sekitar kursor
+            // [DIUBAH] Penyesuaian agar kursor persis di TENGAH kotak yang sudah diperbesar
+            // Setengah dari 400px adalah 200px, Setengah dari 100px adalah 50px
             cursorTracker.style.display = 'block';
-            cursorTracker.style.left = (lastMouseX - 30) + 'px'; // Tengah horizontal
-            cursorTracker.style.top = (lastMouseY - 15) + 'px';  // Tengah vertikal
+            cursorTracker.style.left = (lastMouseX - 200) + 'px'; 
+            cursorTracker.style.top = (lastMouseY - 50) + 'px';  
         });
 
         iframeWrapper.addEventListener('mouseleave', () => {
             cursorTracker.style.display = 'none';
         });
 
-
-        // --- Langkah 3: Loop Utama AI (Proses OCR per detik) ---
         function startOcrLoop() {
-            // Jangan jalankan OCR terlalu sering karena berat. Cukup sekali per 700ms - 1 detik.
             setInterval(async () => {
                 if (!localStream || isOcrRunning || cursorTracker.style.display === 'none') return;
                 
                 isOcrRunning = true;
                 ocrStatus.innerText = "AI Sedang membaca teks di kursor...";
 
-                // A. Ambil gambar utuh dari feed video layar ke canvas besar
                 hiddenCanvas.width = video.videoWidth;
                 hiddenCanvas.height = video.videoHeight;
                 const ctx = hiddenCanvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
 
-                // B. Lakukan Cropping area kecil (200x60 piksel) tepat di posisi kursor
-                // PENTING: Karena merekam seluruh tab, kita butuh 'Offset' (jarak tab/address bar).
-                // Offset ini bervariasi per OS/Browser. Sesuaikan 'baseOffset' jika tidak pas.
-                const baseOffset = 120; // Estimasi tinggi tab + address bar Chrome di Windows
+                const baseOffset = 120; 
                 
-                // Hitung koordinat crop berdasarkan posisi kursor dan video
                 const scaleX = video.videoWidth / window.innerWidth;
                 const scaleY = video.videoHeight / window.innerHeight;
                 
-                const cropX = (lastMouseX + iframeWrapper.offsetLeft) * scaleX - (100 * scaleX); // Crop tengah horiz
-                const cropY = (lastMouseY + iframeWrapper.offsetTop + baseOffset) * scaleY - (30 * scaleY); // Crop tengah vert
+                // [DIUBAH] Penyesuaian kordinat crop gambar agar sesuai dengan kotak baru
+                const cropX = (lastMouseX + iframeWrapper.offsetLeft) * scaleX - (200 * scaleX); 
+                const cropY = (lastMouseY + iframeWrapper.offsetTop + baseOffset) * scaleY - (50 * scaleY); 
                 
                 const processCtx = processCanvas.getContext('2d');
-                // Gambar area yang di-crop ke canvas kecil (untuk dibaca AI)
+                
+                // [DIUBAH] Memotong gambar dari layar utama (hiddenCanvas) sebesar 400x100
                 processCtx.drawImage(hiddenCanvas, 
-                    cropX, cropY, 200 * scaleX, 60 * scaleY, // Ambil dari canvas besar
-                    0, 0, 200, 60 // Taruh di canvas kecil
+                    cropX, cropY, 400 * scaleX, 100 * scaleY, // Koordinat dan ukuran asal
+                    0, 0, 400, 100 // Tujuan di canvas kecil
                 );
 
                 try {
-                    // C. Perintahkan AI membaca teks dari canvas kecil
                     const result = await worker.recognize(processCanvas);
                     
-                    // Bersihkan hasil teks (buang simbol aneh)
                     const cleanText = result.data.text.trim().replace(/[\r\n]+/g, ' ');
 
-                    if (cleanText.length > 2) { // Masukkan jika teks terbaca valid
+                    if (cleanText.length > 2) { 
                         outputBox.value = cleanText;
                     }
                     ocrStatus.innerText = "Selesai membaca. Menunggu kursor diam.";
@@ -205,7 +192,7 @@
                 }
 
                 isOcrRunning = false;
-            }, 800); // Interval loop (800 milidetik)
+            }, 800); 
         }
     </script>
 </body>
