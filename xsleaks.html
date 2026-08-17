@@ -33,167 +33,150 @@
             resize: none; font-size: 16px; margin-top: 10px; box-sizing: border-box;
         }
 
-        /* Iframe standar memuat web aslinya (SOP Aktif) */
         iframe { width: 100%; height: 100%; border: none; border-radius: 4px; background: white; }
 
-        /* Canvas tersembunyi untuk proses cropping gambar */
         #hiddenCanvas, #processCanvas { display: none; }
         
-        /* Indikator OCR */
         #ocrStatus { font-size: 12px; color: #aaa; margin-top: 5px; height: 15px;}
         
-        /* [DIUBAH] Lingkaran/Kotak penunjuk area yang sedang dibaca AI di sekitar kursor */
+        /* Kotak penunjuk statis di pojok kanan atas (menutupi area email) */
         #cursorTracker {
             position: absolute; 
-            width: 500px;   /* SANGAT BESAR: 800px */
-            height: 10000px;  /* SANGAT BESAR: 300px */
-            border: 2px solid #e74c3c; border-radius: 5px;
-            pointer-events: none; /* Klik tembus ke iframe */
-            display: none; background: rgba(231, 76, 60, 0.1);
+            top: 60px;      
+            right: 20px;    
+            width: 320px;   
+            height: 110px;  
+            border: 2px solid #e74c3c; 
+            border-radius: 5px;
+            pointer-events: none; 
+            display: none; 
+            background: rgba(231, 76, 60, 0.1);
         }
     </style>
 </head>
 <body>
-
     <h2>🌐 AI OCR Iframe Copy (Tanpa Proxy)</h2>
-
-    <div class="controls">
+    <div class="controls">        
         <button id="startBtn">Mulai Capture Layar & Aktifkan AI</button>
-        <div id="ocrStatus"></div>
+        <div id="ocrStatus"></div>    
+    </div>
+    
+    <div class="container">        
+        <div class="panel left-panel">            
+            <h3>Hasil OCR AI</h3>            
+            <p style="font-size: 12px; color: #aaa; margin: 0">Pemindaian otomatis berhenti saat email (@) terdeteksi.</p>            
+            <textarea id="hasil-copy" readonly placeholder="Menunggu AI membaca..."></textarea>        
+        </div>
+        
+        <div class="panel right-panel" id="iframeWrapper">            
+            <h3 style="margin-top: 0;">Iframe: webkuliah.com (Web Asli)</h3>                        
+            <iframe id="targetIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>                        
+            <div id="cursorTracker"></div>        
+        </div>    
     </div>
 
-    <div class="container">
-        <!-- Panel 1websaya.com -->
-        <div class="panel left-panel">
-            <h3>Hasil OCR AI</h3>
-            <p style="font-size: 12px; color: #aaa; margin: 0">Area baca sangat besar (800x300). Tunggu sekitar 1 detik agar AI bisa memproses seluruh teks dalam kotak merah.</p>
-            <textarea id="hasil-copy" readonly placeholder="Menunggu AI membaca..."></textarea>
-        </div>
+    <video id="hiddenVideo" autoplay style="display:none;"></video>        
+    <canvas id="hiddenCanvas"></canvas>        
+    <canvas id="processCanvas" width="320" height="110"></canvas>
 
-        <!-- Panel Iframe Web Asli -->
-        <div class="panel right-panel" id="iframeWrapper">
-            <h3 style="margin-top: 0;">Iframe: webkuliah.com (Web Asli)</h3>
-            
-            <iframe id="targetIframe" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>
-            
-            <!-- Penunjuk area OCR di sekitar kursor -->
-            <div id="cursorTracker"></div>
-        </div>
-    </div>
-
-    <!-- Elemen Video tersembunyi untuk menampung feed rekaman layar -->
-    <video id="hiddenVideo" autoplay style="display:none;"></video>
-    
-    <!-- Canvas untuk menangkap gambar frame video -->
-    <canvas id="hiddenCanvas"></canvas>
-    
-    <!-- [DIUBAH] Canvas untuk cropping area (Samakan dengan ukuran #cursorTracker) -->
-    <canvas id="processCanvas" width="800" height="300"></canvas>
-
-    <script>
-        const startBtn = document.getElementById('startBtn');
-        const video = document.getElementById('hiddenVideo');
-        const hiddenCanvas = document.getElementById('hiddenCanvas');
-        const processCanvas = document.getElementById('processCanvas');
-        const outputBox = document.getElementById('hasil-copy');
-        const ocrStatus = document.getElementById('ocrStatus');
-        const iframeWrapper = document.getElementById('iframeWrapper');
+    <script>        
+        const startBtn = document.getElementById('startBtn');        
+        const video = document.getElementById('hiddenVideo');        
+        const hiddenCanvas = document.getElementById('hiddenCanvas');        
+        const processCanvas = document.getElementById('processCanvas');        
+        const outputBox = document.getElementById('hasil-copy');        
+        const ocrStatus = document.getElementById('ocrStatus');        
+        const iframeWrapper = document.getElementById('iframeWrapper');        
         const cursorTracker = document.getElementById('cursorTracker');
 
-        let localStream = null;
-        let isOcrRunning = false;
-        let worker = null; 
-        
-        let lastMouseX = 0;
-        let lastMouseY = 0;
+        let localStream = null;        
+        let isOcrRunning = false;        
+        let scanInterval = null; // Variabel untuk menampung interval agar bisa dihentikan (clearInterval)
+        let worker = null;                 
 
-        async function loadOcrWorker() {
-            ocrStatus.innerText = "Menginisialisasi AI Tesseract...";
-            worker = await Tesseract.createWorker('eng');
-            ocrStatus.innerText = "AI Siap. Silakan klik tombol 'Mulai Capture'";
-        }
+        async function loadOcrWorker() {            
+            ocrStatus.innerText = "Menginisialisasi AI Tesseract...";            
+            worker = await Tesseract.createWorker('eng');            
+            ocrStatus.innerText = "AI Siap. Silakan klik tombol 'Mulai Capture'";        
+        }        
         loadOcrWorker(); 
 
-        startBtn.addEventListener('click', async () => {
-            try {
-                localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { cursor: "always" }, 
-                    audio: false
-                });
+        startBtn.addEventListener('click', async () => {            
+            try {                
+                localStream = await navigator.mediaDevices.getDisplayMedia({                    
+                    video: { cursor: "always" },                     
+                    audio: false                });
 
-                video.srcObject = localStream;
-                startBtn.disabled = true;
-                startBtn.innerText = "AI Aktif. Arahkan kursor!";
-                ocrStatus.innerText = "Berhasil merekam layar. Arahkan kursor ke dalam iframe.";
+                video.srcObject = localStream;                
+                startBtn.disabled = true;                
+                startBtn.innerText = "AI Aktif Memindai Pojok Kanan...";                
+                ocrStatus.innerText = "Memindai area email di pojok kanan atas...";                
                 
-                startOcrLoop(); 
-            } catch (err) {
-                console.error("Gagal capture layar: " + err);
-                ocrStatus.innerText = "Gagal: Izin rekam layar ditolak.";
-            }
-        });
+                cursorTracker.style.display = 'block';
 
-        iframeWrapper.addEventListener('mousemove', (e) => {
-            const rect = iframeWrapper.getBoundingClientRect();
-            lastMouseX = e.clientX - rect.left;
-            lastMouseY = e.clientY - rect.top;
+                startOcrLoop();             
+            } catch (err) {                
+                console.error("Gagal capture layar: " + err);                
+                ocrStatus.innerText = "Gagal: Izin rekam layar ditolak.";            }        });
 
-            // [DIUBAH] Penyesuaian agar kursor persis di TENGAH kotak
-            // Setengah dari 800px = 400px, Setengah dari 300px = 150px
-            cursorTracker.style.display = 'block';
-            cursorTracker.style.left = (lastMouseX - 1000) + 'px'; 
-            cursorTracker.style.top = (lastMouseY - 1000) + 'px';  
-        });
+        function startOcrLoop() {            
+            scanInterval = setInterval(async () => {                
+                if (!localStream || isOcrRunning) return;                                
+                isOcrRunning = true;                
+                ocrStatus.innerText = "AI Sedang membaca teks di area email...";
 
-        iframeWrapper.addEventListener('mouseleave', () => {
-            cursorTracker.style.display = 'none';
-        });
-
-        function startOcrLoop() {
-            setInterval(async () => {
-                if (!localStream || isOcrRunning || cursorTracker.style.display === 'none') return;
-                
-                isOcrRunning = true;
-                ocrStatus.innerText = "AI Sedang membaca teks di kursor (Area Ekstra Besar)...";
-
-                hiddenCanvas.width = video.videoWidth;
-                hiddenCanvas.height = video.videoHeight;
-                const ctx = hiddenCanvas.getContext('2d');
+                hiddenCanvas.width = video.videoWidth;                
+                hiddenCanvas.height = video.videoHeight;                
+                const ctx = hiddenCanvas.getContext('2d');                
                 ctx.drawImage(video, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
 
-                const baseOffset = 120; // Atur manual jika kotak merah dan tangkapan tidak sejajar
+                const baseOffset = 120;                 
+                const scaleX = video.videoWidth / window.innerWidth;                
+                const scaleY = video.videoHeight / window.innerHeight;                                
                 
-                const scaleX = video.videoWidth / window.innerWidth;
-                const scaleY = video.videoHeight / window.innerHeight;
+                const trackerRect = cursorTracker.getBoundingClientRect();
+                const cropX = (trackerRect.left + iframeWrapper.offsetLeft) * scaleX; 
+                const cropY = (trackerRect.top + iframeWrapper.offsetTop + baseOffset) * scaleY;                                 
                 
-                // [DIUBAH] Penyesuaian koordinat crop gambar agar sesuai dengan ukuran kotak baru
-                const cropX = (lastMouseX + iframeWrapper.offsetLeft) * scaleX - (400 * scaleX); 
-                const cropY = (lastMouseY + iframeWrapper.offsetTop + baseOffset) * scaleY - (150 * scaleY); 
-                
-                const processCtx = processCanvas.getContext('2d');
-                
-                // [DIUBAH] Memotong gambar sebesar 800x300 dari layar utama
-                processCtx.drawImage(hiddenCanvas, 
-                    cropX, cropY, 800 * scaleX, 300 * scaleY, // Area potong asli (800x300 dikali rasio layar)
-                    0, 0, 800, 300 // Target di canvas kecil
+                const processCtx = processCanvas.getContext('2d');                
+                processCtx.drawImage(hiddenCanvas,                     
+                    cropX, cropY, 320 * scaleX, 110 * scaleY, 
+                    0, 0, 320, 110                           
                 );
 
-                try {
-                    const result = await worker.recognize(processCanvas);
+                try {                    
+                    const result = await worker.recognize(processCanvas);                                        
+                    const cleanText = result.data.text.trim().replace(/[\r\n]+/g, ' '); 
                     
-                    const cleanText = result.data.text.trim().replace(/[\r\n]+/g, '\n\n'); // Menggunakan enter agar teks panjang rapi
-
-                    if (cleanText.length > 2) { 
-                        outputBox.value = cleanText;
-                    }
-                    ocrStatus.innerText = "Selesai membaca. Menunggu kursor diam.";
-                } catch (e) {
-                    console.error("Gagal OCR:", e);
+                    if (cleanText.length > 2) {                         
+                        outputBox.value = cleanText;                    
+                        
+                        // KONDISI BERHENTI: Jika teks hasil OCR mendeteksi karakter '@'
+                        if (cleanText.includes('@')) {
+                            // Hentikan proses scan berulang
+                            clearInterval(scanInterval);
+                            
+                            // Matikan aliran video rekam layar
+                            localStream.getTracks().forEach(track => track.stop());
+                            
+                            // Sembunyikan kotak merah pemindai
+                            cursorTracker.style.display = 'none';
+                            
+                            // Update status selesai
+                            ocrStatus.innerText = "✅ Email berhasil terdeteksi! Pemindaian otomatis berhenti.";
+                            ocrStatus.style.color = "#2ecc71";
+                            startBtn.innerText = "Selesai (Email Ditemukan)";
+                            isOcrRunning = true; // Kunci permanen agar loop tidak berjalan lagi
+                            return;
+                        }
+                    }                    
+                    ocrStatus.innerText = "Memindai... Mencari teks email (@)...";                
+                } catch (e) {                    
+                    console.error("Gagal OCR:", e);                
                 }
 
-                isOcrRunning = false;
-            }, 800); 
-        }
+                isOcrRunning = false;            }, 1000);         
+        }    
     </script>
 </body>
 </html>
