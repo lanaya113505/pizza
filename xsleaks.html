@@ -45,8 +45,8 @@
         /* [DIUBAH] Lingkaran/Kotak penunjuk area yang sedang dibaca AI di sekitar kursor */
         #cursorTracker {
             position: absolute; 
-            width: 400px;   /* SANGAT BESAR: 800px */
-            height: 200px;  /* SANGAT BESAR: 300px */
+            width: 1000px;   /* SANGAT BESAR: 800px */
+            height: 1000px;  /* SANGAT BESAR: 300px */
             border: 2px solid #e74c3c; border-radius: 5px;
             pointer-events: none; /* Klik tembus ke iframe */
             display: none; background: rgba(231, 76, 60, 0.1);
@@ -141,8 +141,8 @@
             // [DIUBAH] Penyesuaian agar kursor persis di TENGAH kotak
             // Setengah dari 800px = 400px, Setengah dari 300px = 150px
             cursorTracker.style.display = 'block';
-            cursorTracker.style.left = (lastMouseX - 400) + 'px'; 
-            cursorTracker.style.top = (lastMouseY - 150) + 'px';  
+            cursorTracker.style.left = (lastMouseX - 1000) + 'px'; 
+            cursorTracker.style.top = (lastMouseY - 1000) + 'px';  
         });
 
         iframeWrapper.addEventListener('mouseleave', () => {
