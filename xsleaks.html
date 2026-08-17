@@ -39,14 +39,14 @@
         
         #ocrStatus { font-size: 12px; color: #aaa; margin-top: 5px; height: 15px;}
         
-        /* Kotak merah yang bergerak mengikuti kursor mouse */
+        /* Kotak merah mengikuti kursor untuk mendeteksi semua huruf */
         #cursorTracker {
             position: absolute; 
-            width: 600px;   
-            height: 400px;  
+            width: 320px;   
+            height: 110px;  
             border: 2px solid #e74c3c; 
             border-radius: 5px;
-            pointer-events: none; /* Agar klik tembus ke iframe */
+            pointer-events: none; /* Klik tembus ke iframe */
             display: none; 
             background: rgba(231, 76, 60, 0.15);
             z-index: 10;
@@ -54,7 +54,7 @@
     </style>
 </head>
 <body>
-    <h2>🌐 AI OCR Iframe Copy (Follow Cursor + Auto-Stop Email)</h2>
+    <h2>🌐 AI OCR Iframe Copy (Follow Cursor + Auto-Stop @email)</h2>
     <div class="controls">        
         <button id="startBtn">Mulai Capture Layar & Aktifkan AI</button>
         <div id="ocrStatus"></div>    
@@ -63,8 +63,8 @@
     <div class="container">        
         <div class="panel left-panel">            
             <h3>Hasil OCR AI</h3>            
-            <p style="font-size: 12px; color: #aaa; margin: 0">Arahkan kotak merah ke email di pojok kanan atas. Pemindaian otomatis berhenti saat (@) tertangkap.</p>            
-            <textarea id="hasil-copy" readonly placeholder="Menunggu AI membaca..."></textarea>        
+            <p style="font-size: 12px; color: #aaa; margin: 0">Mendeteksi semua huruf. Otomatis berhenti total begitu karakter '@' tertangkap.</p>            
+            <textarea id="hasil-copy" readonly placeholder="Menunggu teks terbaca..."></textarea>        
         </div>
         
         <div class="panel right-panel" id="iframeWrapper">            
@@ -92,7 +92,7 @@
         let localStream = null;        
         let isOcrRunning = false;        
         let scanInterval = null; 
-        let isScanningActive = false; // Status apakah scan masih berjalan atau sudah berhenti
+        let isScanningActive = false; // Status apakah pemindaian masih diizinkan berjalan
         let worker = null;                 
 
         let lastMouseX = 0;
@@ -113,8 +113,8 @@
 
                 video.srcObject = localStream;                
                 startBtn.disabled = true;                
-                startBtn.innerText = "AI Aktif Mengikuti Kursor!";                
-                ocrStatus.innerText = "Arahkan kursor ke area email di pojok kanan atas.";                
+                startBtn.innerText = "AI Aktif Memindai Huruf...";                
+                ocrStatus.innerText = "Gerakkan kursor untuk memindai teks...";                
                 
                 isScanningActive = true;
                 cursorTracker.style.display = 'block';
@@ -124,38 +124,34 @@
                 console.error("Gagal capture layar: " + err);                
                 ocrStatus.innerText = "Gagal: Izin rekam layar ditolak.";            }        });
 
-        // --- FITUR IKUT KURSOR (MOUSEMOVE) ---
+        // --- MENGGERAKKAN KOTAK MERAH MENGIKUTI KURSOR MOUSE ---
         iframeWrapper.addEventListener('mousemove', (e) => {
-            if (!isScanningActive) return; // Jika sudah berhenti, kursor tidak menggerakkan kotak lagi
+            if (!isScanningActive) return; // Jika sudah berhenti (@ ketemu), abaikan gerakan kursor
 
             const rect = iframeWrapper.getBoundingClientRect();
             lastMouseX = e.clientX - rect.left;
             lastMouseY = e.clientY - rect.top;
 
-            // Membuat kursor tepat berada di TENGAH kotak merah (320x110)
-            // 320 / 2 = 160 | 110 / 2 = 55
+            // Posisikan kotak merah agar tepat berada di tengah kursor mouse
             cursorTracker.style.left = (lastMouseX - 160) + 'px'; 
             cursorTracker.style.top = (lastMouseY - 55) + 'px';  
         });
 
         iframeWrapper.addEventListener('mouseleave', () => {
-            if (isScanningActive) {
-                cursorTracker.style.display = 'none';
-            }
+            if (isScanningActive) cursorTracker.style.display = 'none';
         });
 
         iframeWrapper.addEventListener('mouseenter', () => {
-            if (isScanningActive) {
-                cursorTracker.style.display = 'block';
-            }
+            if (isScanningActive) cursorTracker.style.display = 'block';
         });
-        // -------------------------------------
+        // ------------------------------------------------------
 
         function startOcrLoop() {            
             scanInterval = setInterval(async () => {                
+                // Jika stream mati, sedang proses, atau scan sudah non-aktif, lewati
                 if (!localStream || isOcrRunning || !isScanningActive) return;                                
                 isOcrRunning = true;                
-                ocrStatus.innerText = "AI Sedang membaca teks di bawah kursor...";
+                ocrStatus.innerText = "AI sedang membaca huruf di sekitar kursor...";
 
                 hiddenCanvas.width = video.videoWidth;                
                 hiddenCanvas.height = video.videoHeight;                
@@ -166,7 +162,6 @@
                 const scaleX = video.videoWidth / window.innerWidth;                
                 const scaleY = video.videoHeight / window.innerHeight;                                
                 
-                // Ambil posisi kotak merah yang sedang mengikuti kursor
                 const trackerRect = cursorTracker.getBoundingClientRect();
                 const cropX = (trackerRect.left + iframeWrapper.offsetLeft) * scaleX; 
                 const cropY = (trackerRect.top + iframeWrapper.offsetTop + baseOffset) * scaleY;                                 
@@ -181,24 +176,24 @@
                     const result = await worker.recognize(processCanvas);                                        
                     const cleanText = result.data.text.trim().replace(/[\r\n]+/g, ' '); 
                     
-                    if (cleanText.length > 2) {                         
-                        outputBox.value = cleanText;                    
+                    if (cleanText.length > 0) {                         
+                        outputBox.value = cleanText; // Menampilkan huruf/teks apa saja yang sedang tersorot
                         
-                        // KONDISI BERHENTI OTOMATIS: Jika teks mengandung '@'
+                        // --- KONDISI AUTO-STOP KETEMU EMAIL (@) ---
                         if (cleanText.includes('@')) {
-                            isScanningActive = false; // Matikan status aktif
-                            clearInterval(scanInterval); // Hentikan loop pemindaian
+                            isScanningActive = false; // Matikan bendera aktif
+                            clearInterval(scanInterval); // Hentikan perulangan scan
                             
-                            localStream.getTracks().forEach(track => track.stop()); // Matikan rekaman layar
+                            localStream.getTracks().forEach(track => track.stop()); // Matikan izin rekam layar
                             cursorTracker.style.display = 'none'; // Sembunyikan kotak merah
                             
-                            ocrStatus.innerText = "✅ Email terdeteksi! Pemindaian otomatis berhenti.";
+                            ocrStatus.innerText = "✅ Karakter '@' (email) terdeteksi! Scan otomatis berhenti.";
                             ocrStatus.style.color = "#2ecc71";
                             startBtn.innerText = "Selesai (Email Ditemukan)";
                             return;
                         }
                     }                    
-                    ocrStatus.innerText = "Memindai... Arahkan kursor ke email (@)";                
+                    ocrStatus.innerText = "Memindai huruf... Cari area email (@)";                
                 } catch (e) {                    
                     console.error("Gagal OCR:", e);                
                 }
