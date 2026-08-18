@@ -2,106 +2,90 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="referrer" content="no-referrer">
-
-    <title>Auto Screenshot Test</title>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tugas Kuliah</title>
     <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: Arial, sans-serif; background-color: #f9f9f9; }
+        
+        #container-utama { display: flex; width: 100vw; height: 100vh; position: relative; }
+        
+        #iframe-kuliah { width: 50%; height: 100%; border: none; border-right: 1px solid #ddd; }
+        
+        /* Area Kanan: Textarea untuk menampung drag teks */
+        #area-tugas { width: 50%; padding: 30px; box-sizing: border-box; display: flex; flex-direction: column; }
+        #area-tugas h2 { margin-top: 0; }
+        
+        /* Textarea dengan drop zone yang aktif */
+        #input-teks { width: 100%; flex-grow: 1; padding: 15px; border: 2px solid #ccc; border-radius: 8px; resize: none; }
+
+        /* --- BOLA BASKET --- */
+        #bola-basket {
+            position: absolute; font-size: 31px; z-index: 9999; user-select: none; cursor: pointer;
+            top: 7px; left: calc(49% - 55px); transition: top 0.4s ease-out;
         }
 
-        /* Preview screenshot diperbesar */
-        #preview {
+        /* --- KURSOR KUSTOM (HARUS POINTER-EVENTS: NONE AGAR BISA DROP) --- */
+        #custom-cursor {
             position: fixed;
-            right: 100px;
-            bottom: 100px;
-            width: 80vw;
-            max-width: 8000px;
-            max-height: 80000vh;
-            border: 2px solid red;
-            background: white;
-            z-index: 99999;
-            overflow: auto;
-        }
-
-        #preview img {
-            display: block;
-            width: 100%;
-            height: auto;
-        }
-
-        #answer {
-            width: 400px;
-            height: 100px;
+            pointer-events: none; 
+            z-index: 100000;
+            display: none; 
+            font-size: 28px;
+            transform: translate(-50%, -50%);
+            user-select: none;
         }
     </style>
 </head>
-
 <body>
 
-    <iframe
-        width="500"
-        height="500"
-        frameborder="0"
-        src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com/?authuser%3D1&pli=1">
-    </iframe>
+    <div id="container-utama">
+        <iframe id="iframe-kuliah" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>
 
-    <br><br>
+        <div id="area-tugas">
+            <h2>Tugas Web</h2>
+            <p>1. Sentuh bola, bola turun, tunggu 2 detik kursor berubah.</p>
+            <p>2. Tarik (drag) teks dari iframe ke kolom bawah ini:</p>
+            <!-- Textarea ini otomatis bisa menerima drag-drop teks standar -->
+            <textarea id="input-teks" placeholder="Tarik (drag) teks dari iframe ke sini..."></textarea>
+        </div>
 
-    <textarea id="answer" autofocus></textarea>
-
-    <div id="preview">
-        <div>Screenshot terakhir:</div>
-        <img id="screenshotPreview">
+        <div id="bola-basket">🏀</div>
+        <div id="custom-cursor">🏀</div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-
     <script>
-        const textarea = document.getElementById('answer');
-        const preview = document.getElementById('screenshotPreview');
+        const bola = document.getElementById('bola-basket');
+        const customCursor = document.getElementById('custom-cursor');
+        const textarea = document.getElementById('input-teks');
 
-        async function takeScreenshot() {
+        // Melacak pergerakan mouse
+        document.addEventListener('mousemove', (e) => {
+            customCursor.style.left = e.clientX + 'px';
+            customCursor.style.top = e.clientY + 'px';
+        });
 
-            try {
+        // Event sentuh bola
+        bola.addEventListener('mouseover', () => {
+            bola.style.top = '80px';
+            bola.style.pointerEvents = 'none';
+            
+            // Jeda 2 detik (sesuai script Anda)
+            setTimeout(() => {
+                bola.style.display = 'none';
+                customCursor.style.display = 'block';
+                document.body.style.cursor = 'none'; 
+            }, 2000); 
 
-                const canvas = await html2canvas(document.body, {
-                    useCORS: true,
-                    allowTaint: false
-                });
+            // Setelah 4 detik status bola auto (tapi di sini bola sudah display: none)
+            setTimeout(() => {
+                bola.style.pointerEvents = 'auto';
+            }, 4000); 
+        }, { once: true });
 
-                const image = canvas.toDataURL('image/png');
-
-                preview.src = image;
-
-                console.log(
-                    'Screenshot berhasil:',
-                    new Date().toLocaleTimeString()
-                );
-
-            } catch (error) {
-
-                console.error(
-                    'Screenshot gagal:',
-                    error
-                );
-
-            }
-        }
-
-        // Screenshot setiap 1 detik
-        setInterval(takeScreenshot, 1000);
-
-        // Fokus textarea setiap 1 detik
-        setInterval(() => {
-            textarea.focus();
-        }, 1000);
-
-        // Screenshot pertama
-        takeScreenshot();
+        // Tambahan: Memastikan textarea selalu bisa menerima drop
+        textarea.ondragover = (e) => {
+            e.preventDefault(); // Mengizinkan drop
+        };
     </script>
-
 </body>
 </html>
