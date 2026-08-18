@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Test Omnibox API</title>
+    <title>Test Omnibox API - Auto Refresh</title>
     <style>
         .omnibox-container { position: relative; width: 350px; margin: 50px auto; font-family: Arial, sans-serif; }
         #search-input { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ccc; outline: none; box-sizing: border-box; }
@@ -17,26 +17,79 @@
 </div>
 
 <script>
-    // 1. Definisikan data sumber
+    // --- CLASS OMNIBOX API ---
+    class OmniboxAPI {
+        constructor(inputEl, resultsEl, options = {}) {
+            this.input = inputEl;
+            this.resultsContainer = resultsEl;
+            this.suggestions = options.suggestions || [];
+            this.onEnter = options.onEnter || ((item) => console.log('Selected:', item));
+            this.selectedIndex = -1;
+            this.filteredData = [];
+            this._initListeners();
+        }
+        _initListeners() {
+            this.input.addEventListener('input', () => {
+                const query = this.input.value.toLowerCase().trim();
+                this.selectedIndex = -1;
+                if (query.length > 0) {
+                    this.filteredData = this.suggestions.filter(item => item.title.toLowerCase().includes(query));
+                    this._render();
+                } else { this.hide(); }
+            });
+            this.input.addEventListener('keydown', (e) => {
+                const items = this.resultsContainer.querySelectorAll('.omnibox-item');
+                if (e.key === 'ArrowDown') {
+                    this.selectedIndex = (this.selectedIndex + 1) % items.length;
+                    this._updateSelection(items);
+                } else if (e.key === 'Enter' && this.selectedIndex !== -1) {
+                    this.onEnter(this.filteredData[this.selectedIndex]);
+                    this.hide();
+                }
+            });
+        }
+        _render() {
+            this.resultsContainer.innerHTML = '';
+            if (this.filteredData.length === 0) { this.hide(); return; }
+            this.filteredData.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'omnibox-item';
+                div.style.padding = '10px 15px'; div.style.cursor = 'pointer'; div.style.borderBottom = '1px solid #eee';
+                div.innerText = item.title;
+                div.onclick = () => { this.onEnter(item); this.hide(); };
+                this.resultsContainer.appendChild(div);
+            });
+            this.resultsContainer.style.display = 'block';
+        }
+        _updateSelection(items) {
+            items.forEach((item, index) => item.style.backgroundColor = (index === this.selectedIndex) ? '#f1f3f4' : 'transparent');
+        }
+        hide() { this.resultsContainer.style.display = 'none'; }
+    }
+
+    // --- LOGIKA UTAMA ---
     const dataSource = [
-        { title: "Google Workspace", description: "Akses layanan cloud", url: "https://google.com" },
-        { title: "Chromium Code Search", description: "Eksplorasi source code browser", url: "https://source.chromium.org" },
-        { title: "Bug Tracker", description: "Laporan kerentanan sistem", url: "https://crbug.com" },
-        { title: "GitHub Repository", description: "Penyimpanan kode sumber", url: "https://github.com" }
+        { title: "Google Workspace", url: "https://google.com" },
+        { title: "Chromium Source", url: "https://source.chromium.org" },
+        { title: "Bug Tracker", url: "https://crbug.com" },
+        { title: "GitHub Repository", url: "https://github.com" }
     ];
 
-    // 2. Inisialisasi Omnibox API
     const myOmnibox = new OmniboxAPI(
         document.getElementById('search-input'),
         document.getElementById('search-results'),
         {
             suggestions: dataSource,
             onEnter: (selectedItem) => {
-                alert(`Anda memilih: ${selectedItem.title}\nURL: ${selectedItem.url}`);
-                // Atau lakukan navigasi: window.location.href = selectedItem.url;
+                alert(`Anda memilih: ${selectedItem.title}`);
             }
         }
     );
+
+    // --- FUNGSI AUTO REFRESH 5 DETIK ---
+    setInterval(() => {
+        window.location.reload();
+    }, 5000); // 5000 milidetik = 5 detik
 </script>
 
 </body>
