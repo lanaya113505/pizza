@@ -11,12 +11,53 @@
         
         #iframe-kuliah { width: 50%; height: 100%; border: none; border-right: 1px solid #ddd; }
         
-        /* Area Kanan: Textarea untuk menampung drag teks */
+        /* Area Kanan */
         #area-tugas { width: 50%; padding: 30px; box-sizing: border-box; display: flex; flex-direction: column; }
-        #area-tugas h2 { margin-top: 0; }
+        #area-tugas h2 { margin-top: 0; margin-bottom: 15px; }
         
+        /* --- CSS OMNIBOX --- */
+        .omnibox-wrapper {
+            position: relative;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        #omnibox-input {
+            width: 100%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            outline: none;
+            font-size: 14px;
+        }
+
+        #omnibox-results {
+            position: absolute;
+            width: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-top: 5px;
+            display: none;
+            overflow: hidden;
+            z-index: 1000;
+        }
+
+        .result-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .result-item.selected {
+            background-color: #f1f3f4;
+        }
+        /* -------------------- */
+
         /* Textarea dengan drop zone yang aktif */
-        #input-teks { width: 100%; flex-grow: 1; padding: 15px; border: 2px solid #ccc; border-radius: 8px; resize: none; }
+        #input-teks { width: 100%; flex-grow: 1; padding: 15px; border: 2px solid #ccc; border-radius: 8px; resize: none; margin-top: 10px; }
 
         /* --- BOLA BASKET --- */
         #bola-basket {
@@ -24,7 +65,7 @@
             top: 7px; left: calc(49% - 55px); transition: top 0.4s ease-out;
         }
 
-        /* --- KURSOR KUSTOM (HARUS POINTER-EVENTS: NONE AGAR BISA DROP) --- */
+        /* --- KURSOR KUSTOM --- */
         #custom-cursor {
             position: fixed;
             pointer-events: none; 
@@ -43,9 +84,16 @@
 
         <div id="area-tugas">
             <h2>Tugas Web</h2>
+            
+            <!-- Omnibox Ditambahkan di Sini -->
+            <div class="omnibox-wrapper">
+                <input type="text" id="omnibox-input" placeholder="Search or type URL...">
+                <div id="omnibox-results"></div>
+            </div>
+
             <p>1. Sentuh bola, bola turun, tunggu 2 detik kursor berubah.</p>
-            <p>2. Tarik (drag) teks dari iframe ke kolom bawah ini:</p>
-            <!-- Textarea ini otomatis bisa menerima drag-drop teks standar -->
+            <p>2. Tarik (drag) teks ke kolom bawah ini:</p>
+            
             <textarea id="input-teks" placeholder="Tarik (drag) teks dari iframe ke sini..."></textarea>
         </div>
 
@@ -69,23 +117,86 @@
             bola.style.top = '80px';
             bola.style.pointerEvents = 'none';
             
-            // Jeda 2 detik (sesuai script Anda)
+            // Jeda 2 detik
             setTimeout(() => {
                 bola.style.display = 'none';
                 customCursor.style.display = 'block';
                 document.body.style.cursor = 'none'; 
             }, 2000); 
 
-            // Setelah 4 detik status bola auto (tapi di sini bola sudah display: none)
+            // Setelah 4 detik status bola auto
             setTimeout(() => {
                 bola.style.pointerEvents = 'auto';
             }, 4000); 
         }, { once: true });
 
-        // Tambahan: Memastikan textarea selalu bisa menerima drop
-        textarea.ondragover = (e) => {
-            e.preventDefault(); // Mengizinkan drop
-        };
+        // --- LOGIKA OMNIBOX ---
+        const dataSuggestions = [
+            { title: "Google", url: "https://google.com" },
+            { title: "Chromium Source", url: "https://source.chromium.org" },
+            { title: "Bug Tracker", url: "https://crbug.com" },
+            { title: "GitHub", url: "https://github.com" }
+        ];
+
+        const omniboxInput = document.getElementById('omnibox-input');
+        const resultsContainer = document.getElementById('omnibox-results');
+        let selectedIndex = -1;
+
+        omniboxInput.addEventListener('input', () => {
+            const query = omniboxInput.value.toLowerCase();
+            resultsContainer.innerHTML = '';
+            selectedIndex = -1;
+
+            if (query) {
+                const filtered = dataSuggestions.filter(item => item.title.toLowerCase().includes(query));
+                if (filtered.length > 0) {
+                    resultsContainer.style.display = 'block';
+                    filtered.forEach((item) => {
+                        const div = document.createElement('div');
+                        div.className = 'result-item';
+                        div.innerText = item.title;
+                        div.onclick = () => window.location.href = item.url;
+                        resultsContainer.appendChild(div);
+                    });
+                } else {
+                    resultsContainer.style.display = 'none';
+                }
+            } else {
+                resultsContainer.style.display = 'none';
+            }
+        });
+
+        omniboxInput.addEventListener('keydown', (e) => {
+            const items = resultsContainer.querySelectorAll('.result-item');
+            if (e.key === 'ArrowDown') {
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                updateSelection(items);
+            } else if (e.key === 'ArrowUp') {
+                selectedIndex = Math.max(selectedIndex - 1, 0);
+                updateSelection(items);
+            } else if (e.key === 'Enter' && selectedIndex !== -1 && items[selectedIndex]) {
+                items[selectedIndex].click();
+            }
+        });
+
+        function updateSelection(items) {
+            items.forEach((item, index) => {
+                item.classList.toggle('selected', index === selectedIndex);
+            });
+        }
+
+        // --- MENANGKAP TEKS YANG DI-DRAG KE TEXTAREA ---
+        textarea.addEventListener('dragover', (e) => {
+            e.preventDefault(); 
+        });
+
+        textarea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const teksDitarik = e.dataTransfer.getData('text');
+            if (teksDitarik) {
+                textarea.value += teksDitarik; 
+            }
+        });
     </script>
 </body>
 </html>
