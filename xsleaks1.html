@@ -2,95 +2,131 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Test Omnibox API - Auto Refresh</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tugas Kuliah</title>
     <style>
-        .omnibox-container { position: relative; width: 350px; margin: 50px auto; font-family: Arial, sans-serif; }
-        #search-input { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ccc; outline: none; box-sizing: border-box; }
-        #search-results { position: absolute; width: 100%; background: white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-top: 5px; display: none; z-index: 999; overflow: hidden; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: Arial, sans-serif; background-color: #f9f9f9; }
+        
+        #container-utama { display: flex; width: 100vw; height: 100vh; position: relative; }
+        
+        /* Iframe Google Asli */
+        #iframe-kuliah { width: 50%; height: 100%; border: none; border-right: 1px solid #ddd; }
+        
+        /* Area Kanan */
+        #area-tugas { width: 50%; padding: 30px; box-sizing: border-box; display: flex; flex-direction: column; }
+        #area-tugas h2 { margin-top: 0; margin-bottom: 15px; }
+        
+        /* Tombol Penyedot Clipboard */
+        #btn-paste {
+            padding: 12px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background 0.3s;
+        }
+        #btn-paste:hover { background-color: #1557b0; }
+
+        /* Textarea */
+        #input-teks { width: 100%; flex-grow: 1; padding: 15px; border: 2px solid #ccc; border-radius: 8px; resize: none; font-size: 15px; background-color: #fff; }
+
+        /* --- BOLA BASKET --- */
+        #bola-basket {
+            position: absolute; font-size: 31px; z-index: 9999; user-select: none; cursor: pointer;
+            top: 7px; left: calc(49% - 55px); transition: top 0.4s ease-out;
+        }
+
+        /* --- KURSOR KUSTOM --- */
+        #custom-cursor {
+            position: fixed; pointer-events: none; z-index: 100000; display: none; font-size: 28px;
+            transform: translate(-50%, -50%); user-select: none;
+        }
     </style>
 </head>
 <body>
 
-<div class="omnibox-container">
-    <input type="text" id="search-input" placeholder="Ketik sesuatu...">
-    <div id="search-results"></div>
-</div>
+    <div id="container-utama">
+        <iframe id="iframe-kuliah" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>
+        <iframe id="iframe-kuliah" src="https://cse.google.com/cse?cx=partner-pub-9120570912590841:y4n90nnx897&q=genshin#gsc.tab=0&gsc.q=genshin&gsc.page=1"></iframe>
+        <div id="area-tugas">
+            <h2>Tugas Web (Clipboard Extractor)</h2>
+            <p><strong>Cara Bypass Tarik Teks:</strong></p>
+            <ol>
+                <li>Blok teks di web kiri lalu tekan <strong>Ctrl + C</strong>.</li>
+                <li>Klik tombol di bawah ini (atau klik 2x pada kotak teks) untuk menyedot data.</li>
+            </ol>
+            
+            <!-- Tombol Interaksi Pengguna untuk Bypass -->
+            <button id="btn-paste">📥 Sedot Teks (Paste Otomatis)</button>
+            <textarea id="input-teks" placeholder="Teks dari iframe akan tersedot ke sini..."></textarea>
+        </div>
 
-<script>
-    // --- CLASS OMNIBOX API ---
-    class OmniboxAPI {
-        constructor(inputEl, resultsEl, options = {}) {
-            this.input = inputEl;
-            this.resultsContainer = resultsEl;
-            this.suggestions = options.suggestions || [];
-            this.onEnter = options.onEnter || ((item) => console.log('Selected:', item));
-            this.selectedIndex = -1;
-            this.filteredData = [];
-            this._initListeners();
-        }
-        _initListeners() {
-            this.input.addEventListener('input', () => {
-                const query = this.input.value.toLowerCase().trim();
-                this.selectedIndex = -1;
-                if (query.length > 0) {
-                    this.filteredData = this.suggestions.filter(item => item.title.toLowerCase().includes(query));
-                    this._render();
-                } else { this.hide(); }
-            });
-            this.input.addEventListener('keydown', (e) => {
-                const items = this.resultsContainer.querySelectorAll('.omnibox-item');
-                if (e.key === 'ArrowDown') {
-                    this.selectedIndex = (this.selectedIndex + 1) % items.length;
-                    this._updateSelection(items);
-                } else if (e.key === 'Enter' && this.selectedIndex !== -1) {
-                    this.onEnter(this.filteredData[this.selectedIndex]);
-                    this.hide();
+        <div id="bola-basket">🏀</div>
+        <div id="custom-cursor">🏀</div>
+    </div>
+
+    <script>
+        const bola = document.getElementById('bola-basket');
+        const customCursor = document.getElementById('custom-cursor');
+        const textarea = document.getElementById('input-teks');
+        const btnPaste = document.getElementById('btn-paste');
+
+        // --- EFEK BOLA BASKET & KURSOR ---
+        document.addEventListener('mousemove', (e) => {
+            customCursor.style.left = e.clientX + 'px';
+            customCursor.style.top = e.clientY + 'px';
+        });
+
+        bola.addEventListener('mouseover', () => {
+            bola.style.top = '80px';
+            bola.style.pointerEvents = 'none';
+            
+            setTimeout(() => {
+                bola.style.display = 'none';
+                customCursor.style.display = 'block';
+                document.body.style.cursor = 'none'; 
+            }, 1000); 
+
+            setTimeout(() => {
+                bola.style.pointerEvents = 'auto';
+            }, 3000); 
+        }, { once: true });
+
+
+        // --- BYPASS CORS MENGGUNAKAN CLIPBOARD API ---
+        async function sedotClipboard() {
+            try {
+                // Membaca data teks dari memori OS Clipboard
+                const teksKopiyan = await navigator.clipboard.readText();
+                if (teksKopiyan) {
+                    textarea.value += teksKopiyan + '\n';
+                    
+                    // Efek visual tombol saat sukses
+                    const teksAsliTombol = btnPaste.innerText;
+                    btnPaste.innerText = "✅ Teks Berhasil Disedot!";
+                    btnPaste.style.backgroundColor = "#2ecc71";
+                    
+                    setTimeout(() => {
+                        btnPaste.innerText = teksAsliTombol;
+                        btnPaste.style.backgroundColor = "#1a73e8";
+                    }, 2000);
                 }
-            });
-        }
-        _render() {
-            this.resultsContainer.innerHTML = '';
-            if (this.filteredData.length === 0) { this.hide(); return; }
-            this.filteredData.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'omnibox-item';
-                div.style.padding = '10px 15px'; div.style.cursor = 'pointer'; div.style.borderBottom = '1px solid #eee';
-                div.innerText = item.title;
-                div.onclick = () => { this.onEnter(item); this.hide(); };
-                this.resultsContainer.appendChild(div);
-            });
-            this.resultsContainer.style.display = 'block';
-        }
-        _updateSelection(items) {
-            items.forEach((item, index) => item.style.backgroundColor = (index === this.selectedIndex) ? '#f1f3f4' : 'transparent');
-        }
-        hide() { this.resultsContainer.style.display = 'none'; }
-    }
-
-    // --- LOGIKA UTAMA ---
-    const dataSource = [
-        { title: "Google Workspace", url: "https://google.com" },
-        { title: "Chromium Source", url: "https://source.chromium.org" },
-        { title: "Bug Tracker", url: "https://crbug.com" },
-        { title: "GitHub Repository", url: "https://github.com" }
-    ];
-
-    const myOmnibox = new OmniboxAPI(
-        document.getElementById('search-input'),
-        document.getElementById('search-results'),
-        {
-            suggestions: dataSource,
-            onEnter: (selectedItem) => {
-                alert(`Anda memilih: ${selectedItem.title}`);
+            } catch (err) {
+                alert("Gagal membaca clipboard. Pastikan Anda mengizinkan notifikasi akses Clipboard di browser (Biasanya muncul pop-up di dekat address bar).");
+                console.error('Error:', err);
             }
         }
-    );
 
-    // --- FUNGSI AUTO REFRESH 5 DETIK ---
-    setInterval(() => {
-        window.location.reload();
-    }, 5000); // 5000 milidetik = 5 detik
-</script>
+        // Jalankan fungsi saat tombol diklik
+        btnPaste.addEventListener('click', sedotClipboard);
 
+        // Jalankan fungsi saat textarea di klik 2x (Double Click) sebagai alternatif
+        textarea.addEventListener('dblclick', sedotClipboard);
+    </script>
 </body>
 </html>
