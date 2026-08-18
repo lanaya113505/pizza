@@ -2,201 +2,42 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tugas Kuliah</title>
+    <title>Test Omnibox API</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: Arial, sans-serif; background-color: #f9f9f9; }
-        
-        #container-utama { display: flex; width: 100vw; height: 100vh; position: relative; }
-        
-        #iframe-kuliah { width: 50%; height: 100%; border: none; border-right: 1px solid #ddd; }
-        
-        /* Area Kanan */
-        #area-tugas { width: 50%; padding: 30px; box-sizing: border-box; display: flex; flex-direction: column; }
-        #area-tugas h2 { margin-top: 0; margin-bottom: 15px; }
-        
-        /* --- CSS OMNIBOX --- */
-        .omnibox-wrapper {
-            position: relative;
-            width: 100%;
-            margin-bottom: 15px;
-        }
-
-        #omnibox-input {
-            width: 100%;
-            padding: 10px 15px;
-            border-radius: 20px;
-            border: 1px solid #ddd;
-            box-sizing: border-box;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            outline: none;
-            font-size: 14px;
-        }
-
-        #omnibox-results {
-            position: absolute;
-            width: 100%;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            margin-top: 5px;
-            display: none;
-            overflow: hidden;
-            z-index: 1000;
-        }
-
-        .result-item {
-            padding: 10px 15px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .result-item.selected {
-            background-color: #f1f3f4;
-        }
-        /* -------------------- */
-
-        /* Textarea dengan drop zone yang aktif */
-        #input-teks { width: 100%; flex-grow: 1; padding: 15px; border: 2px solid #ccc; border-radius: 8px; resize: none; margin-top: 10px; }
-
-        /* --- BOLA BASKET --- */
-        #bola-basket {
-            position: absolute; font-size: 31px; z-index: 9999; user-select: none; cursor: pointer;
-            top: 7px; left: calc(49% - 55px); transition: top 0.4s ease-out;
-        }
-
-        /* --- KURSOR KUSTOM --- */
-        #custom-cursor {
-            position: fixed;
-            pointer-events: none; 
-            z-index: 100000;
-            display: none; 
-            font-size: 28px;
-            transform: translate(-50%, -50%);
-            user-select: none;
-        }
+        .omnibox-container { position: relative; width: 350px; margin: 50px auto; font-family: Arial, sans-serif; }
+        #search-input { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ccc; outline: none; box-sizing: border-box; }
+        #search-results { position: absolute; width: 100%; background: white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-top: 5px; display: none; z-index: 999; overflow: hidden; }
     </style>
 </head>
 <body>
 
-    <div id="container-utama">
-        <iframe id="iframe-kuliah" src="https://access.workspace.google.com/u/0/ServiceNotAllowed?application=216932279217&source=scrip&continue=https://chat.google.com"></iframe>
+<div class="omnibox-container">
+    <input type="text" id="search-input" placeholder="Ketik sesuatu...">
+    <div id="search-results"></div>
+</div>
 
-        <div id="area-tugas">
-            <h2>Tugas Web</h2>
-            
-            <!-- Omnibox Ditambahkan di Sini -->
-            <div class="omnibox-wrapper">
-                <input type="text" id="omnibox-input" placeholder="Search or type URL...">
-                <div id="omnibox-results"></div>
-            </div>
+<script>
+    // 1. Definisikan data sumber
+    const dataSource = [
+        { title: "Google Workspace", description: "Akses layanan cloud", url: "https://google.com" },
+        { title: "Chromium Code Search", description: "Eksplorasi source code browser", url: "https://source.chromium.org" },
+        { title: "Bug Tracker", description: "Laporan kerentanan sistem", url: "https://crbug.com" },
+        { title: "GitHub Repository", description: "Penyimpanan kode sumber", url: "https://github.com" }
+    ];
 
-            <p>1. Sentuh bola, bola turun, tunggu 2 detik kursor berubah.</p>
-            <p>2. Tarik (drag) teks ke kolom bawah ini:</p>
-            
-            <textarea id="input-teks" placeholder="Tarik (drag) teks dari iframe ke sini..."></textarea>
-        </div>
-
-        <div id="bola-basket">🏀</div>
-        <div id="custom-cursor">🏀</div>
-    </div>
-
-    <script>
-        const bola = document.getElementById('bola-basket');
-        const customCursor = document.getElementById('custom-cursor');
-        const textarea = document.getElementById('input-teks');
-
-        // Melacak pergerakan mouse
-        document.addEventListener('mousemove', (e) => {
-            customCursor.style.left = e.clientX + 'px';
-            customCursor.style.top = e.clientY + 'px';
-        });
-
-        // Event sentuh bola
-        bola.addEventListener('mouseover', () => {
-            bola.style.top = '80px';
-            bola.style.pointerEvents = 'none';
-            
-            // Jeda 2 detik
-            setTimeout(() => {
-                bola.style.display = 'none';
-                customCursor.style.display = 'block';
-                document.body.style.cursor = 'none'; 
-            }, 2000); 
-
-            // Setelah 4 detik status bola auto
-            setTimeout(() => {
-                bola.style.pointerEvents = 'auto';
-            }, 4000); 
-        }, { once: true });
-
-        // --- LOGIKA OMNIBOX ---
-        const dataSuggestions = [
-            { title: "Google", url: "https://google.com" },
-            { title: "Chromium Source", url: "https://source.chromium.org" },
-            { title: "Bug Tracker", url: "https://crbug.com" },
-            { title: "GitHub", url: "https://github.com" }
-        ];
-
-        const omniboxInput = document.getElementById('omnibox-input');
-        const resultsContainer = document.getElementById('omnibox-results');
-        let selectedIndex = -1;
-
-        omniboxInput.addEventListener('input', () => {
-            const query = omniboxInput.value.toLowerCase();
-            resultsContainer.innerHTML = '';
-            selectedIndex = -1;
-
-            if (query) {
-                const filtered = dataSuggestions.filter(item => item.title.toLowerCase().includes(query));
-                if (filtered.length > 0) {
-                    resultsContainer.style.display = 'block';
-                    filtered.forEach((item) => {
-                        const div = document.createElement('div');
-                        div.className = 'result-item';
-                        div.innerText = item.title;
-                        div.onclick = () => window.location.href = item.url;
-                        resultsContainer.appendChild(div);
-                    });
-                } else {
-                    resultsContainer.style.display = 'none';
-                }
-            } else {
-                resultsContainer.style.display = 'none';
+    // 2. Inisialisasi Omnibox API
+    const myOmnibox = new OmniboxAPI(
+        document.getElementById('search-input'),
+        document.getElementById('search-results'),
+        {
+            suggestions: dataSource,
+            onEnter: (selectedItem) => {
+                alert(`Anda memilih: ${selectedItem.title}\nURL: ${selectedItem.url}`);
+                // Atau lakukan navigasi: window.location.href = selectedItem.url;
             }
-        });
-
-        omniboxInput.addEventListener('keydown', (e) => {
-            const items = resultsContainer.querySelectorAll('.result-item');
-            if (e.key === 'ArrowDown') {
-                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-                updateSelection(items);
-            } else if (e.key === 'ArrowUp') {
-                selectedIndex = Math.max(selectedIndex - 1, 0);
-                updateSelection(items);
-            } else if (e.key === 'Enter' && selectedIndex !== -1 && items[selectedIndex]) {
-                items[selectedIndex].click();
-            }
-        });
-
-        function updateSelection(items) {
-            items.forEach((item, index) => {
-                item.classList.toggle('selected', index === selectedIndex);
-            });
         }
+    );
+</script>
 
-        // --- MENANGKAP TEKS YANG DI-DRAG KE TEXTAREA ---
-        textarea.addEventListener('dragover', (e) => {
-            e.preventDefault(); 
-        });
-
-        textarea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const teksDitarik = e.dataTransfer.getData('text');
-            if (teksDitarik) {
-                textarea.value += teksDitarik; 
-            }
-        });
-    </script>
 </body>
 </html>
